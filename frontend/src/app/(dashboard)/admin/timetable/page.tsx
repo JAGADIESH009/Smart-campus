@@ -6,25 +6,33 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Calendar, Wand2, Plus, GripHorizontal } from "lucide-react"
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function AdminTimetablePage() {
   const { token } = useAuth()
   const [courses, setCourses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
 
-    fetch("http://localhost:5000/api/admin/courses", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      setCourses(data)
-      setLoading(false)
-    })
-    .catch(console.error)
-  }, [token])
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        const { data, error } = await supabase.from('Course').select(`
+          id, name,
+          sections:Section(id, name)
+        `)
+        if (error) throw error
+        if (data) setCourses(data)
+      } catch (err) {
+        console.error("Failed to fetch courses:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchCourses()
+  }, [])
 
   const handleGenerate = () => {
     setGenerating(true)

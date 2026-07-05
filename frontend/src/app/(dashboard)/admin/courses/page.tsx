@@ -6,25 +6,47 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Plus, BookOpen, Layers, Users, ChevronDown, ChevronRight, Edit, Trash2 } from "lucide-react"
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function AdminCoursesPage() {
   const { token } = useAuth()
   const [courses, setCourses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedCourse, setExpandedCourse] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
 
-    fetch("http://localhost:5000/api/admin/courses", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      setCourses(data)
-      setLoading(false)
-    })
-    .catch(console.error)
-  }, [token])
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        const { data, error } = await supabase.from('Course').select(`
+          id, name, duration,
+          department:Department(name),
+          sections:Section(id, name, semester, students:User(count)),
+          subjects:Subject(id, name, code, semester, credits)
+        `)
+        
+        if (error) throw error
+        
+        if (data) {
+          const mapped = data.map(c => ({
+            ...c,
+            department: Array.isArray(c.department) ? c.department[0] : c.department,
+            sections: c.sections.map((s: any) => ({
+              ...s,
+              _count: { students: s.students && s.students[0] ? s.students[0].count : 0 }
+            }))
+          }))
+          setCourses(mapped)
+        }
+      } catch (err) {
+        console.error("Failed to fetch courses:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchCourses()
+  }, [])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading courses...</div>
 

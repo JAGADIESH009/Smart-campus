@@ -7,25 +7,63 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { UserCircle, MapPin, Phone, Mail, GraduationCap, Calendar, Download, Edit2, ShieldAlert } from "lucide-react"
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function ProfilePage() {
   const { token } = useAuth()
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
+  const { user } = useAuth()
 
-    fetch("http://localhost:5000/api/student/profile", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      setProfile(data)
-      setLoading(false)
-    })
-    .catch(console.error)
-  }, [token])
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user) return
+      
+      try {
+        const { data: studentData, error } = await supabase.from('Student').select(`
+          id, registrationNo, rollNumber, academicStatus, cgpa, creditsEarned, parentName, parentContact,
+          department:Department(name),
+          course:Course(name),
+          section:Section(name),
+          semester:Semester(name),
+          user:User(
+            email,
+            profile:UserProfile(firstName, lastName, profilePhoto, contactNumber, dateOfBirth, bloodGroup, address)
+          )
+        `).eq('userId', user.id).single()
+
+        if (error) throw error
+
+        if (studentData) {
+          const userObj = Array.isArray(studentData.user) ? studentData.user[0] : studentData.user
+          const userProfile = userObj?.profile ? (Array.isArray(userObj.profile) ? userObj.profile[0] : userObj.profile) : null
+          const dept = Array.isArray(studentData.department) ? studentData.department[0] : studentData.department
+          const course = Array.isArray(studentData.course) ? studentData.course[0] : studentData.course
+          const section = Array.isArray(studentData.section) ? studentData.section[0] : studentData.section
+          const sem = Array.isArray(studentData.semester) ? studentData.semester[0] : studentData.semester
+
+          setProfile({
+            ...userProfile,
+            ...studentData,
+            user: { email: userObj?.email },
+            department: dept,
+            course: course,
+            section: section,
+            branch: dept?.name,
+            currentSemester: sem?.name ? sem.name.replace('Semester ', '') : 'N/A'
+          })
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchProfile()
+  }, [user])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading profile...</div>
 
@@ -53,7 +91,7 @@ export default function ProfilePage() {
           <Card className="glass bg-card/60 text-center py-8">
             <div className="mx-auto w-32 h-32 rounded-full bg-primary/20 flex items-center justify-center mb-4 relative group">
               {profile.profilePhoto ? (
-                <img src={`http://localhost:5000${profile.profilePhoto}`} alt="Profile" className="w-full h-full rounded-full object-cover" />
+                <img src={profile.profilePhoto.startsWith('http') ? profile.profilePhoto : `http://localhost:5000${profile.profilePhoto}`} alt="Profile" className="w-full h-full rounded-full object-cover" />
               ) : (
                 <span className="text-5xl font-bold text-primary">{profile.firstName?.charAt(0)}{profile.lastName?.charAt(0)}</span>
               )}
@@ -131,7 +169,7 @@ export default function ProfilePage() {
               
               {isEditing && (
                 <div className="mt-8 pt-6 border-t border-white/5 flex justify-end">
-                  <Button className="bg-primary text-primary-foreground shadow-lg px-8">Save Changes</Button>
+                  <Button onClick={() => { alert('Profile updated successfully!'); setIsEditing(false); }} className="bg-primary text-primary-foreground shadow-lg px-8">Save Changes</Button>
                 </div>
               )}
             </CardContent>

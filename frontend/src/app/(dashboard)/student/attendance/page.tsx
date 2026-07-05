@@ -6,24 +6,76 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Calendar, CheckCircle2, XCircle, Clock, FileWarning, AlertTriangle } from "lucide-react"
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function AttendanceAnalyticsPage() {
   const { token } = useAuth()
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
+  const { user } = useAuth()
 
-    fetch("http://localhost:5000/api/student/attendance", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(resData => {
-      setData(resData)
-      setLoading(false)
-    })
-    .catch(console.error)
-  }, [token])
+  useEffect(() => {
+    const fetchAttendance = async () => {
+      if (!user) return
+      
+      try {
+        const { data: studentData } = await supabase.from('Student').select('id, courseId').eq('userId', user.id).single()
+        if (!studentData) return
+
+        const { data: records } = await supabase.from('AttendanceRecord').select(`
+          status, remarks,
+          attendance:Attendance(
+            date, hour,
+            subject:Subject(name)
+          )
+        `).eq('studentId', studentData.id).order('createdAt', { ascending: false })
+
+        if (records) {
+          const logs = records.map((r: any) => {
+            const att = Array.isArray(r.attendance) ? r.attendance[0] : r.attendance
+            const subj = Array.isArray(att?.subject) ? att.subject[0] : att?.subject
+            return {
+              date: att?.date,
+              hour: att?.hour,
+              subject: { name: subj?.name },
+              status: r.status,
+              remarks: r.remarks
+            }
+          })
+
+          const summary = { present: 0, absent: 0, late: 0, medical: 0, duty: 0, total: logs.length }
+          const subjectCounts: Record<string, { present: number, total: number }> = {}
+
+          logs.forEach((log: any) => {
+            if (log.status === 'PRESENT') summary.present++
+            else if (log.status === 'ABSENT') summary.absent++
+            else if (log.status === 'LATE') summary.late++
+            else if (log.status === 'MEDICAL') summary.medical++
+            else if (log.status === 'DUTY') summary.duty++
+            
+            const subjName = log.subject.name || 'Unknown'
+            if (!subjectCounts[subjName]) subjectCounts[subjName] = { present: 0, total: 0 }
+            subjectCounts[subjName].total++
+            if (log.status === 'PRESENT') subjectCounts[subjName].present++
+          })
+
+          const subjectStats = Object.keys(subjectCounts).map(name => ({
+            name,
+            percentage: Math.round((subjectCounts[name].present / subjectCounts[name].total) * 100)
+          }))
+
+          setData({ logs, summary, subjectStats })
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchAttendance()
+  }, [user])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading analytics...</div>
 

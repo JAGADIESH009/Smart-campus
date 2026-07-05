@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FileText, CheckCircle2, Plus, X, Search } from "lucide-react"
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function FacultyAssignmentsPage() {
   const { token } = useAuth()
   const [assignments, setAssignments] = useState<any[]>([])
@@ -17,45 +19,90 @@ export default function FacultyAssignmentsPage() {
   const [remarks, setRemarks] = useState("")
   const [savingGrade, setSavingGrade] = useState(false)
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
+  const { user } = useAuth()
 
-    fetch("http://localhost:5000/api/faculty/assignments", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      setAssignments(data)
+  const fetchAssignments = async () => {
+    if (!user) return
+    try {
+      setLoading(true)
+      const { data: facultyData } = await supabase.from('Faculty').select('id, subjects:Subject(id)').eq('userId', user.id).single()
+      const subjectIds = (facultyData?.subjects || []).map((s: any) => s.id)
+      
+      if (subjectIds.length === 0) {
+        setAssignments([])
+        return
+      }
+
+      const { data } = await supabase.from('Assignment')
+        .select(`
+          id, title, dueDate,
+          subject:Subject(name),
+          submissions:AssignmentSubmission(
+            id, status, submittedAt, marks, remarks, fileUrl, studentId, assignmentId,
+            student:Student(
+              rollNumber,
+              user:User(
+                profile:UserProfile(firstName, lastName)
+              )
+            )
+          )
+        `)
+        .in('subjectId', subjectIds)
+      
+      if (data) {
+        const mapped = data.map((a: any) => ({
+          id: a.id,
+          title: a.title,
+          dueDate: a.dueDate,
+          subject: Array.isArray(a.subject) ? a.subject[0] : a.subject,
+          submissions: a.submissions.map((sub: any) => {
+            const s = sub.student || {}
+            const userObj = Array.isArray(s.user) ? s.user[0] : s.user
+            const profile = userObj?.profile ? (Array.isArray(userObj.profile) ? userObj.profile[0] : userObj.profile) : null
+            return {
+              ...sub,
+              student: {
+                rollNumber: s.rollNumber,
+                firstName: profile?.firstName || 'Unknown',
+                lastName: profile?.lastName || ''
+              }
+            }
+          })
+        }))
+        setAssignments(mapped)
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
       setLoading(false)
-    })
-    .catch(console.error)
-  }, [token])
+    }
+  }
+
+  useEffect(() => {
+    fetchAssignments()
+  }, [user])
 
   const handleGrade = async () => {
-    if (!token || !gradingSub) return
+    if (!gradingSub) return
     setSavingGrade(true)
     
     try {
-      const res = await fetch(`http://localhost:5000/api/faculty/assignments/${gradingSub.assignmentId}/grade/${gradingSub.studentId}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify({ marks, remarks })
-      })
-      if (res.ok) {
-        // Refresh
-        const data = await fetch("http://localhost:5000/api/faculty/assignments", {
-          headers: { Authorization: `Bearer ${token}` }
-        }).then(r => r.json())
-        setAssignments(data)
+      const { error } = await supabase.from('AssignmentSubmission')
+        .update({ marks: parseFloat(marks), remarks, status: 'GRADED' })
+        .eq('id', gradingSub.id)
+        
+      if (!error) {
+        await fetchAssignments()
         setGradingSub(null)
+      } else {
+        console.error("Failed to grade:", error)
       }
     } catch (e) {
       console.error(e)
+    } finally {
+      setSavingGrade(false)
     }
-    setSavingGrade(false)
   }
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading assignments...</div>
@@ -118,7 +165,7 @@ export default function FacultyAssignmentsPage() {
                             {sub.marks !== null ? <span className="text-green-500">{sub.marks}</span> : '-'}
                           </td>
                           <td className="px-6 py-4 text-right space-x-2">
-                            <a href={`http://localhost:5000${sub.fileUrl}`} target="_blank" rel="noreferrer">
+                            <a href={sub.fileUrl?.startsWith('http') ? sub.fileUrl : `http://localhost:5000${sub.fileUrl}`} target="_blank" rel="noreferrer">
                               <Button variant="outline" size="sm" className="h-8 border-white/10">
                                 <FileText size={14} className="mr-2"/> View File
                               </Button>

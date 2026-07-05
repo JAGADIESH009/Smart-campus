@@ -4,25 +4,44 @@ import { useEffect, useState } from "react"
 import { useAuth } from "@/context/AuthContext"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Clock, MapPin, Users, BookOpen } from "lucide-react"
+import { createClient } from "@/utils/supabase/client"
 
 export default function TimetablePage() {
   const { token } = useAuth()
   const [timetable, setTimetable] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
+  const { user } = useAuth()
 
-    fetch("http://localhost:5000/api/student/timetable", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      setTimetable(data)
-      setLoading(false)
-    })
-    .catch(console.error)
-  }, [token])
+  useEffect(() => {
+    const fetchTimetable = async () => {
+      if (!user) return
+      
+      try {
+        const { data: studentData } = await supabase.from('Student').select('id, sectionId').eq('userId', user.id).single()
+        if (!studentData) return
+
+        const { data: schedule } = await supabase.from('Timetable').select(`
+          dayOfWeek, startTime, endTime, room, type,
+          subject:Subject(name, code)
+        `).eq('sectionId', studentData.sectionId)
+
+        if (schedule) {
+          const mapped = schedule.map((cls: any) => ({
+            ...cls,
+            subject: Array.isArray(cls.subject) ? cls.subject[0] : cls.subject
+          }))
+          setTimetable(mapped)
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchTimetable()
+  }, [user])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading timetable...</div>
 

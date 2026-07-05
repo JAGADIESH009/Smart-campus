@@ -7,25 +7,56 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, Plus, UserCircle, Edit, Trash2, Mail, GraduationCap } from "lucide-react"
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function AdminFacultyPage() {
   const { token } = useAuth()
   const [faculty, setFaculty] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
 
-    fetch("http://localhost:5000/api/admin/faculty", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      setFaculty(data)
-      setLoading(false)
-    })
-    .catch(console.error)
-  }, [token])
+  useEffect(() => {
+    const fetchFaculty = async () => {
+      try {
+        const { data, error } = await supabase.from('Faculty').select(`
+          id, employeeId, designation, createdAt,
+          department:Department(name),
+          subjects:Subject(id),
+          user:User(
+            email,
+            profile:UserProfile(firstName, lastName)
+          )
+        `)
+        if (error) throw error
+        
+        if (data) {
+          const mapped = data.map((f: any) => {
+            const userObj = Array.isArray(f.user) ? f.user[0] : f.user
+            const profileObj = userObj?.profile ? (Array.isArray(userObj.profile) ? userObj.profile[0] : userObj.profile) : null
+            return {
+              id: f.id,
+              firstName: profileObj?.firstName || 'Unknown',
+              lastName: profileObj?.lastName || '',
+              employeeId: f.employeeId,
+              user: { email: userObj?.email || '' },
+              designation: f.designation || 'Faculty',
+              department: { name: (Array.isArray(f.department) ? f.department[0]?.name : f.department?.name) || '' },
+              joiningDate: f.createdAt,
+              subjects: f.subjects || []
+            }
+          })
+          setFaculty(mapped)
+        }
+      } catch (err) {
+        console.error("Failed to fetch faculty:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchFaculty()
+  }, [])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading faculty...</div>
 

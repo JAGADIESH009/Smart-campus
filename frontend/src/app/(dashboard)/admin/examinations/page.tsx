@@ -7,25 +7,59 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, FileSpreadsheet, Download, FilePlus2, Eye } from "lucide-react"
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function AdminExaminationsPage() {
   const { token } = useAuth()
   const [marks, setMarks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
 
-    fetch("http://localhost:5000/api/admin/examinations", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      setMarks(data)
-      setLoading(false)
-    })
-    .catch(console.error)
-  }, [token])
+  useEffect(() => {
+    const fetchMarks = async () => {
+      try {
+        const { data, error } = await supabase.from('Mark').select(`
+          id, marksObtained,
+          exam:Exam(name, maxMarks),
+          subject:Subject(name),
+          student:Student(
+            rollNumber,
+            course:Course(name),
+            semester:Semester(name),
+            user:User(
+              profile:UserProfile(firstName, lastName)
+            )
+          )
+        `)
+        if (error) throw error
+        
+        if (data) {
+          const mapped = data.map((m: any) => ({
+            id: m.id,
+            student: {
+              firstName: m.student?.user?.profile?.[0]?.firstName || 'Unknown',
+              lastName: m.student?.user?.profile?.[0]?.lastName || '',
+              rollNumber: m.student?.rollNumber || '',
+              course: Array.isArray(m.student?.course) ? m.student?.course[0] : m.student?.course,
+              currentSemester: Array.isArray(m.student?.semester) ? m.student.semester[0]?.name : m.student?.semester?.name
+            },
+            subject: Array.isArray(m.subject) ? m.subject[0] : m.subject,
+            examType: Array.isArray(m.exam) ? m.exam[0]?.name : m.exam?.name,
+            marksObtained: m.marksObtained,
+            totalMarks: Array.isArray(m.exam) ? m.exam[0]?.maxMarks : m.exam?.maxMarks
+          }))
+          setMarks(mapped)
+        }
+      } catch (err) {
+        console.error("Failed to fetch marks:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchMarks()
+  }, [])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading examination records...</div>
 

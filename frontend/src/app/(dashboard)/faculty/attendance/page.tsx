@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ChevronRight, Save, Search, Check, X, Clock, Pill, Briefcase } from "lucide-react"
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function FacultyAttendancePage() {
   const { token } = useAuth()
   const [hierarchy, setHierarchy] = useState<any[]>([])
@@ -23,38 +25,83 @@ export default function FacultyAttendancePage() {
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState("")
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
+  const { user } = useAuth()
 
-    fetch("http://localhost:5000/api/faculty/hierarchy", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        setHierarchy(data)
+  useEffect(() => {
+    if (!user) return
+
+    const fetchHierarchy = async () => {
+      try {
+        const { data: facultyData } = await supabase.from('Faculty').select(`
+          subjects:Subject(
+            id, name,
+            course:Course(
+              sections:Section(id, name)
+            )
+          )
+        `).eq('userId', user.id).single()
+
+        if (facultyData?.subjects) {
+          const formatted = facultyData.subjects.map((s: any) => {
+            const course = Array.isArray(s.course) ? s.course[0] : s.course
+            return {
+              id: s.id,
+              name: s.name,
+              sections: course?.sections || []
+            }
+          })
+          setHierarchy(formatted)
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
         setLoading(false)
-      })
-      .catch(console.error)
-  }, [token])
+      }
+    }
+    fetchHierarchy()
+  }, [user])
 
   useEffect(() => {
-    if (!token || !selectedSubject || !selectedSection) return
+    if (!selectedSubject || !selectedSection) return
 
-    fetch(`http://localhost:5000/api/faculty/subjects/${selectedSubject.id}/sections/${selectedSection.id}/students`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        setStudents(data)
-        // Initialize state to PRESENT
-        const init: Record<string, any> = {}
-        data.forEach((s: any) => {
-          init[s.id] = { status: 'ABSENT', remarks: '' }
-        })
-        setAttendanceState(init)
-      })
-      .catch(console.error)
-  }, [selectedSubject, selectedSection, token])
+    const fetchStudents = async () => {
+      try {
+        const { data: sectionData } = await supabase.from('Section').select(`
+          students:Student(
+            id, rollNumber,
+            user:User(
+              profile:UserProfile(firstName, lastName)
+            )
+          )
+        `).eq('id', selectedSection.id).single()
+
+        if (sectionData?.students) {
+          const mapped = sectionData.students.map((st: any) => {
+            const userObj = Array.isArray(st.user) ? st.user[0] : st.user
+            const profile = userObj?.profile ? (Array.isArray(userObj.profile) ? userObj.profile[0] : userObj.profile) : null
+            return {
+              id: st.id,
+              rollNumber: st.rollNumber,
+              name: `${profile?.firstName || 'Unknown'} ${profile?.lastName || ''}`
+            }
+          })
+          
+          mapped.sort((a, b) => a.rollNumber.localeCompare(b.rollNumber))
+          setStudents(mapped)
+
+          const init: Record<string, any> = {}
+          mapped.forEach((s: any) => {
+            init[s.id] = { status: 'ABSENT', remarks: '' }
+          })
+          setAttendanceState(init)
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    fetchStudents()
+  }, [selectedSubject, selectedSection])
 
   const markAll = (status: string) => {
     const next: Record<string, any> = {}
@@ -65,7 +112,7 @@ export default function FacultyAttendancePage() {
   }
 
   const handleSave = async () => {
-    if (!token || !selectedSubject) return
+    if (!selectedSubject) return
     setSaving(true)
 
     const attendanceList = Object.keys(attendanceState).map(studentId => ({
@@ -75,29 +122,35 @@ export default function FacultyAttendancePage() {
     }))
 
     try {
-      const res = await fetch(`http://localhost:5000/api/faculty/attendance/bulk`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          date,
-          hour,
-          subjectId: selectedSubject.id,
-          attendanceList
-        })
-      })
+      const isoDate = new Date(date).toISOString()
+      // First, upsert attendance
+      const { data: attData, error: attError } = await supabase.from('Attendance').upsert({
+        date: isoDate,
+        hour: parseInt(hour),
+        subjectId: selectedSubject.id
+      }, { onConflict: 'date, hour, subjectId' }).select().single()
 
-      if (res.ok) {
-        alert("Attendance saved successfully!")
-      } else {
-        alert("Failed to save attendance")
-      }
+      if (attError) throw attError
+      
+      // Upsert records
+      const records = attendanceList.map(a => ({
+        attendanceId: attData.id,
+        studentId: a.studentId,
+        status: a.status,
+        remarks: a.remarks
+      }))
+      
+      const { error: recError } = await supabase.from('AttendanceRecord').upsert(records, { onConflict: 'attendanceId, studentId' })
+      
+      if (recError) throw recError
+
+      alert("Attendance saved successfully!")
     } catch (e) {
       console.error(e)
+      alert("Failed to save attendance")
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
   }
 
   const filteredStudents = students.filter(s =>

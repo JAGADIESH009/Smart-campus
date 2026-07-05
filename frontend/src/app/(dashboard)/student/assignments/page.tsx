@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FileUp, Calendar, CheckCircle2, Clock, FileWarning, Search, XCircle, FileText, AlertTriangle } from "lucide-react"
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function AssignmentsPage() {
   const { token } = useAuth()
   const [assignments, setAssignments] = useState<any[]>([])
@@ -15,47 +17,90 @@ export default function AssignmentsPage() {
   const [file, setFile] = useState<File | null>(null)
   const [filter, setFilter] = useState('ALL') // ALL, PENDING, GRADED
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
+  const { user } = useAuth()
+  const [studentId, setStudentId] = useState<string | null>(null)
 
-    fetch("http://localhost:5000/api/student/assignments", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      setAssignments(data)
+  const fetchAssignments = async () => {
+    if (!user) return
+    setLoading(true)
+    try {
+      const { data: studentData } = await supabase.from('Student').select('id, courseId').eq('userId', user.id).single()
+      if (!studentData) return
+      setStudentId(studentData.id)
+
+      const { data: subjects } = await supabase.from('Subject').select(`
+        name,
+        assignments:Assignment(
+          id, title, description, dueDate
+        )
+      `).eq('courseId', studentData.courseId)
+      
+      const allAssignments = subjects?.flatMap((sub: any) => (sub.assignments || []).map((a: any) => ({
+        ...a,
+        subjectName: sub.name
+      }))) || []
+
+      const { data: submissions } = await supabase.from('AssignmentSubmission').select('*').eq('studentId', studentData.id)
+      
+      const mapped = allAssignments.map((a: any) => {
+        const sub = submissions?.find(s => s.assignmentId === a.id)
+        return {
+          id: a.id,
+          title: a.title,
+          description: a.description,
+          dueDate: a.dueDate,
+          subjectName: a.subjectName,
+          status: sub?.status || 'PENDING',
+          marks: sub?.marks,
+          remarks: sub?.remarks,
+          fileUrl: sub?.fileUrl
+        }
+      })
+      
+      setAssignments(mapped)
+    } catch (e) {
+      console.error(e)
+    } finally {
       setLoading(false)
-    })
-    .catch(console.error)
-  }, [token])
+    }
+  }
+
+  useEffect(() => {
+    fetchAssignments()
+  }, [user])
 
   const handleUpload = async (assignmentId: string) => {
-    if (!file || !token) return
+    if (!file || !user || !studentId) return
     setUploadingId(assignmentId)
 
-    const formData = new FormData()
-    formData.append("file", file)
-
     try {
-      const res = await fetch(`http://localhost:5000/api/student/assignments/${assignmentId}/submit`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      })
-      if (res.ok) {
-        // Refresh
-        const updated = await fetch("http://localhost:5000/api/student/assignments", {
-          headers: { Authorization: `Bearer ${token}` }
-        }).then(r => r.json())
-        setAssignments(updated)
-        setFile(null)
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Math.random()}.${fileExt}`
+      const filePath = `${studentId}/${assignmentId}/${fileName}`
+
+      const { error: uploadError } = await supabase.storage.from('assignments').upload(filePath, file)
+      
+      if (uploadError) {
+        console.error("Upload failed", uploadError)
       } else {
-        console.error("Upload failed")
+        const { data: publicUrlData } = supabase.storage.from('assignments').getPublicUrl(filePath)
+        
+        await supabase.from('AssignmentSubmission').upsert({
+          assignmentId,
+          studentId,
+          fileUrl: publicUrlData.publicUrl,
+          status: 'SUBMITTED'
+        }, { onConflict: 'assignmentId, studentId' })
+        
+        await fetchAssignments()
+        setFile(null)
       }
     } catch (e) {
       console.error(e)
+    } finally {
+      setUploadingId(null)
     }
-    setUploadingId(null)
   }
 
   const getDaysRemaining = (dueDate: string) => {

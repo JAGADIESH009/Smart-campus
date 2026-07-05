@@ -7,25 +7,61 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, Plus, UserCircle, Edit, Trash2, Mail, MapPin } from "lucide-react"
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function AdminStudentsPage() {
   const { token } = useAuth()
   const [students, setStudents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
 
-    fetch("http://localhost:5000/api/admin/students", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-      setStudents(data)
-      setLoading(false)
-    })
-    .catch(console.error)
-  }, [token])
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try {
+        const { data, error } = await supabase.from('Student').select(`
+          id, rollNumber, registrationNo, academicStatus,
+          department:Department(name),
+          course:Course(name),
+          semester:Semester(name),
+          user:User(
+            email,
+            profile:UserProfile(firstName, lastName, profilePhoto)
+          )
+        `)
+        if (error) throw error
+        
+        if (data) {
+          const mapped = data.map((s: any) => {
+            const userObj = Array.isArray(s.user) ? s.user[0] : s.user
+            const profileObj = userObj?.profile ? (Array.isArray(userObj.profile) ? userObj.profile[0] : userObj.profile) : null
+            const deptName = Array.isArray(s.department) ? s.department[0]?.name : s.department?.name
+            return {
+              id: s.id,
+              firstName: profileObj?.firstName || 'Unknown',
+              lastName: profileObj?.lastName || '',
+              profilePhoto: profileObj?.profilePhoto,
+              rollNumber: s.rollNumber,
+              registrationNo: s.registrationNo,
+              academicStatus: s.academicStatus,
+              department: { name: deptName },
+              course: { name: Array.isArray(s.course) ? s.course[0]?.name : s.course?.name },
+              branch: deptName,
+              currentSemester: Array.isArray(s.semester) ? s.semester[0]?.name : s.semester?.name,
+              user: { email: userObj?.email || '' }
+            }
+          })
+          setStudents(mapped)
+        }
+      } catch (err) {
+        console.error("Failed to fetch students:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchStudents()
+  }, [])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading students...</div>
 
@@ -75,8 +111,8 @@ export default function AdminStudentsPage() {
                 <tr key={student.id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold shrink-0">
-                        {student.profilePhoto ? <img src={`http://localhost:5000${student.profilePhoto}`} className="w-full h-full rounded-full object-cover"/> : student.firstName.charAt(0)}
+                      <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold shrink-0 overflow-hidden">
+                        {student.profilePhoto ? <img src={student.profilePhoto.startsWith('http') ? student.profilePhoto : `http://localhost:5000${student.profilePhoto}`} className="w-full h-full object-cover"/> : student.firstName.charAt(0)}
                       </div>
                       <div>
                         <div className="font-bold text-[15px]">{student.firstName} {student.lastName}</div>

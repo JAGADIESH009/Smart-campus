@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Users, ChevronRight, UserCircle, Search, Calendar, FileText } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
+import { createClient } from "@/utils/supabase/client"
+
 export default function FacultyStudentsPage() {
   const { token } = useAuth()
   const [hierarchy, setHierarchy] = useState<any[]>([])
@@ -18,34 +20,92 @@ export default function FacultyStudentsPage() {
   const [loadingStudents, setLoadingStudents] = useState(false)
   const [search, setSearch] = useState("")
 
-  useEffect(() => {
-    if (!token) return
+  const supabase = createClient()
+  const { user } = useAuth()
 
-    fetch("http://localhost:5000/api/faculty/hierarchy", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        setHierarchy(data)
+  useEffect(() => {
+    if (!user) return
+
+    const fetchHierarchy = async () => {
+      try {
+        const { data: facultyData } = await supabase.from('Faculty').select(`
+          subjects:Subject(
+            id, name,
+            course:Course(
+              sections:Section(id, name)
+            )
+          )
+        `).eq('userId', user.id).single()
+
+        if (facultyData?.subjects) {
+          const formatted = facultyData.subjects.map((s: any) => {
+            const course = Array.isArray(s.course) ? s.course[0] : s.course
+            return {
+              id: s.id,
+              name: s.name,
+              sections: course?.sections || []
+            }
+          })
+          setHierarchy(formatted)
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
         setLoading(false)
-      })
-      .catch(console.error)
-  }, [token])
+      }
+    }
+    fetchHierarchy()
+  }, [user])
 
   useEffect(() => {
-    if (!token || !selectedSubject || !selectedSection) return
+    if (!selectedSubject || !selectedSection) return
 
-    setLoadingStudents(true)
-    fetch(`http://localhost:5000/api/faculty/subjects/${selectedSubject.id}/sections/${selectedSection.id}/students`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        setStudents(data)
+    const fetchStudents = async () => {
+      setLoadingStudents(true)
+      try {
+        const { data: sectionData } = await supabase.from('Section').select(`
+          students:Student(
+            id, rollNumber,
+            user:User(
+              email,
+              profile:UserProfile(firstName, lastName, profilePhoto)
+            ),
+            attendances:AttendanceRecord(id, status),
+            submissions:AssignmentSubmission(id)
+          )
+        `).eq('id', selectedSection.id).single()
+
+        if (sectionData?.students) {
+          const mapped = sectionData.students.map((st: any) => {
+            const userObj = Array.isArray(st.user) ? st.user[0] : st.user
+            const profile = userObj?.profile ? (Array.isArray(userObj.profile) ? userObj.profile[0] : userObj.profile) : null
+            
+            const totalAtt = Array.isArray(st.attendances) ? st.attendances.length : 0
+            const presentAtt = Array.isArray(st.attendances) ? st.attendances.filter((a: any) => a.status === 'PRESENT').length : 0
+            const attPercent = totalAtt > 0 ? ((presentAtt / totalAtt) * 100).toFixed(1) : "100.0"
+
+            return {
+              id: st.id,
+              rollNumber: st.rollNumber,
+              name: `${profile?.firstName || 'Unknown'} ${profile?.lastName || ''}`,
+              email: userObj?.email || '',
+              profilePhoto: profile?.profilePhoto,
+              attendancePercent: attPercent,
+              submissionsCount: Array.isArray(st.submissions) ? st.submissions.length : 0
+            }
+          })
+          
+          mapped.sort((a, b) => a.rollNumber.localeCompare(b.rollNumber))
+          setStudents(mapped)
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
         setLoadingStudents(false)
-      })
-      .catch(console.error)
-  }, [selectedSubject, selectedSection, token])
+      }
+    }
+    fetchStudents()
+  }, [selectedSubject, selectedSection])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading classes...</div>
 
@@ -140,7 +200,7 @@ export default function FacultyStudentsPage() {
                           <tr key={student.id} className="hover:bg-muted/30 transition-colors">
                             <td className="px-6 py-4 font-medium flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold shrink-0">
-                                {student.profilePhoto ? <img src={`http://localhost:5000${student.profilePhoto}`} className="w-full h-full rounded-full object-cover" /> : student.name.charAt(0)}
+                                {student.profilePhoto ? <img src={student.profilePhoto.startsWith('http') ? student.profilePhoto : `http://localhost:5000${student.profilePhoto}`} className="w-full h-full object-cover" /> : student.name.charAt(0)}
                               </div>
                               <div>
                                 <div>{student.name}</div>
