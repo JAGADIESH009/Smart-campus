@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react"
 import { useRouter, usePathname } from "next/navigation"
+import { createClient } from "@/utils/supabase/client"
 
 type User = {
   id: string
@@ -13,8 +14,8 @@ type User = {
 type AuthContextType = {
   user: User | null
   token: string | null
-  login: (token: string, user: User) => void
-  logout: () => void
+  login: (user: User) => void
+  logout: () => Promise<void>
   isLoading: boolean
 }
 
@@ -26,29 +27,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
   const pathname = usePathname()
+  const supabase = createClient()
 
   useEffect(() => {
-    // Check local storage for token on mount
-    const storedToken = localStorage.getItem("token")
-    const storedUser = localStorage.getItem("user")
-    
-    if (storedToken && storedUser) {
-      setToken(storedToken)
-      setUser(JSON.parse(storedUser))
+    const fetchSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session?.user) {
+        setToken(session.access_token)
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          role: session.user.user_metadata?.role || 'STUDENT',
+          name: session.user.user_metadata?.name || '',
+        })
+      } else {
+        setToken(null)
+        setUser(null)
+      }
+      setIsLoading(false)
     }
-    setIsLoading(false)
-  }, [])
+
+    fetchSession()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setToken(session.access_token)
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          role: session.user.user_metadata?.role || 'STUDENT',
+          name: session.user.user_metadata?.name || '',
+        })
+      } else {
+        setToken(null)
+        setUser(null)
+      }
+      setIsLoading(false)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [supabase.auth])
 
   useEffect(() => {
     if (isLoading) return
 
-    // Simple route protection
+    // Route protection logic
     const isAuthRoute = pathname.startsWith('/login')
     const isDashboardRoute = pathname.startsWith('/student') || pathname.startsWith('/faculty') || pathname.startsWith('/admin') || pathname.startsWith('/alumni')
     
-    if (!token && isDashboardRoute) {
+    if (!user && isDashboardRoute) {
       router.push('/')
-    } else if (token && user) {
+    } else if (user) {
       // Prevent cross-portal access
       if (pathname.startsWith('/admin') && user.role !== 'ADMIN') router.push('/')
       if (pathname.startsWith('/faculty') && user.role !== 'FACULTY') router.push('/')
@@ -63,20 +93,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         else router.push('/student')
       }
     }
-  }, [user, token, pathname, isLoading, router])
+  }, [user, pathname, isLoading, router])
 
-  const login = (newToken: string, newUser: User) => {
-    localStorage.setItem("token", newToken)
-    localStorage.setItem("user", JSON.stringify(newUser))
-    setToken(newToken)
+  const login = (newUser: User) => {
     setUser(newUser)
   }
 
-  const logout = () => {
-    localStorage.removeItem("token")
-    localStorage.removeItem("user")
-    setToken(null)
+  const logout = async () => {
+    await supabase.auth.signOut()
     setUser(null)
+    setToken(null)
     router.push("/")
   }
 

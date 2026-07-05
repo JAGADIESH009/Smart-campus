@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext"
 import { motion } from "framer-motion"
 import { Mail, Lock, Loader2, ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { createClient } from "@/utils/supabase/client"
 
 export function LoginForm({ role, title }: { role: string, title: string }) {
   const { login } = useAuth()
@@ -17,59 +18,67 @@ export function LoginForm({ role, title }: { role: string, title: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   
-  // Custom Math CAPTCHA state
-  const [num1, setNum1] = useState(0)
-  const [num2, setNum2] = useState(0)
-  const [captchaAnswer, setCaptchaAnswer] = useState("")
-  const [mounted, setMounted] = useState(false)
-  
-
-  
-  useEffect(() => {
-    setNum1(Math.floor(Math.random() * 10) + 1)
-    setNum2(Math.floor(Math.random() * 10) + 1)
-    setMounted(true)
-  }, [])
-
   const router = useRouter()
-
-  const regenerateCaptcha = () => {
-    setNum1(Math.floor(Math.random() * 10) + 1)
-    setNum2(Math.floor(Math.random() * 10) + 1)
-    setCaptchaAnswer("")
-  }
+  const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (parseInt(captchaAnswer) !== num1 + num2) {
-      setError("Incorrect CAPTCHA answer. Please try again.")
-      regenerateCaptcha()
-      return
-    }
-
     setLoading(true)
     setError("")
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, portalRole: role }),
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       })
 
-      const data = await res.json()
+      if (authError) {
+        setError(authError.message || "Invalid credentials. Please check your email and password.")
+        setLoading(false)
+        return
+      }
 
-      if (res.ok) {
-        login(data.token, data.user)
-      } else {
-        setError(data.message || "Invalid credentials. Please check your email and password.")
+      if (data.user) {
+        const userRole = data.user.user_metadata?.role || 'STUDENT'
+        
+        // Only Admin can login through Faculty portal and bypass role check
+        if (role === 'FACULTY' && userRole === 'ADMIN') {
+          login({
+            id: data.user.id,
+            email: data.user.email!,
+            role: userRole,
+            name: data.user.user_metadata?.name,
+          })
+          router.push('/admin')
+          return
+        }
+
+        // Enforce strict portal-role matching
+        if (role !== userRole) {
+          setError(`Invalid credentials for this portal. You belong to the ${userRole} portal.`)
+          await supabase.auth.signOut()
+          setLoading(false)
+          return
+        }
+
+        login({
+          id: data.user.id,
+          email: data.user.email!,
+          role: userRole,
+          name: data.user.user_metadata?.name,
+        })
+        
+        // Redirect to respective dashboard
+        if (userRole === 'ADMIN') router.push('/admin')
+        else if (userRole === 'FACULTY') router.push('/faculty')
+        else if (userRole === 'ALUMNI') router.push('/alumni')
+        else router.push('/student')
       }
     } catch (err) {
       setError("Unable to connect to the server. Please try again.")
     } finally {
       setLoading(false)
-      if (error) regenerateCaptcha()
     }
   }
 
@@ -108,8 +117,8 @@ export function LoginForm({ role, title }: { role: string, title: string }) {
                 <Mail className="absolute left-3 top-3 text-muted-foreground w-5 h-5" />
                 <Input 
                   id="email" 
-                  type="text" 
-                  placeholder="Username" 
+                  type="email" 
+                  placeholder="Email Address" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10 h-12 bg-background/50 border-white/10 focus-visible:ring-primary"
@@ -125,22 +134,6 @@ export function LoginForm({ role, title }: { role: string, title: string }) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10 h-12 bg-background/50 border-white/10 focus-visible:ring-primary"
-                  required 
-                />
-              </div>
-
-              {/* CAPTCHA Field */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground ml-1">
-                  Security Check: What is {mounted ? num1 : 0} + {mounted ? num2 : 0}?
-                </label>
-                <Input 
-                  id="captcha" 
-                  type="text" 
-                  placeholder="Answer"
-                  value={captchaAnswer}
-                  onChange={(e) => setCaptchaAnswer(e.target.value)}
-                  className="h-12 bg-background/50 border-white/10 focus-visible:ring-primary"
                   required 
                 />
               </div>
