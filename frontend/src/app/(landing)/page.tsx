@@ -36,11 +36,6 @@ export default function LandingPage() {
             <a href="#contact" className="hover:text-white transition-colors">Contact</a>
           </div>
           <div className="flex gap-4">
-            <Link href="/login/student">
-              <Button variant="secondary" className="bg-white/10 hover:bg-white/20 text-white border-none rounded-full shadow-lg backdrop-blur-md">
-                Login
-              </Button>
-            </Link>
           </div>
         </div>
       </nav>
