@@ -19,21 +19,23 @@ export default function StudentDashboard() {
       if (!user) return
       
       try {
-        const { data: studentData } = await supabase.from('Student').select('id, sectionId').eq('userId', user.id).single()
+        const { data: studentData } = await supabase.from('Student').select('id, sectionId, cgpa').eq('userId', user.id).single()
         const studentId = studentData?.id
 
         if (studentId) {
           const { data: attendances } = await supabase.from('AttendanceRecord').select('status').eq('studentId', studentId)
           const totalAtt = attendances?.length || 0
           const presentAtt = attendances?.filter((a: any) => a.status === 'PRESENT').length || 0
-          const attPercent = totalAtt > 0 ? ((presentAtt / totalAtt) * 100).toFixed(1) : "92.5"
+          const attPercent = totalAtt > 0 ? ((presentAtt / totalAtt) * 100).toFixed(1) : "0.0"
 
           const { count: classesCount } = await supabase.from('Timetable').select('*', { count: 'exact', head: true }).eq('sectionId', studentData.sectionId).eq('dayOfWeek', new Date().getDay())
+          
+          const { count: pendingAssignmentsCount } = await supabase.from('AssignmentSubmission').select('*', { count: 'exact', head: true }).eq('studentId', studentId).eq('status', 'PENDING')
 
           setData({
             attendancePercent: attPercent,
-            cgpa: "8.7",
-            pendingAssignments: 3,
+            cgpa: studentData?.cgpa || "0.0",
+            pendingAssignments: pendingAssignmentsCount || 0,
             todaysClasses: classesCount || 0
           })
         }

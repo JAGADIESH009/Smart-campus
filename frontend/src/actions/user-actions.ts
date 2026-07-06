@@ -32,8 +32,20 @@ async function logAdminAction(action: string, details: string) {
 }
 
 export async function createUserAction(data: any) {
+  const supabase = createAdminClient()
+  let authUserId: string | null = null;
+  
   try {
-    const supabase = createAdminClient()
+    // 1. Pre-validation checks
+    if (data.roleName === 'FACULTY') {
+      const existingFaculty = await prisma.faculty.findUnique({ where: { employeeId: data.employeeId } })
+      if (existingFaculty) throw new Error(`Employee ID ${data.employeeId} is already in use.`)
+    } else if (data.roleName === 'STUDENT') {
+      const existingStudentReg = await prisma.student.findUnique({ where: { registrationNo: data.registrationNo } })
+      if (existingStudentReg) throw new Error(`Registration Number ${data.registrationNo} is already in use.`)
+      const existingStudentRoll = await prisma.student.findUnique({ where: { rollNumber: data.rollNumber } })
+      if (existingStudentRoll) throw new Error(`Roll Number ${data.rollNumber} is already in use.`)
+    }
 
     let role = await prisma.role.findUnique({ where: { name: data.roleName } })
     if (!role) {
@@ -42,6 +54,7 @@ export async function createUserAction(data: any) {
       })
     }
 
+    // 2. Create Auth User
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: data.email,
       password: data.password,
@@ -54,64 +67,74 @@ export async function createUserAction(data: any) {
     })
 
     if (authError) {
-      return { error: authError.message }
+      throw new Error(authError.message)
     }
 
-    const userId = authData.user.id
+    authUserId = authData.user.id
 
-    await prisma.user.create({
-      data: {
-        id: userId,
-        email: data.email,
-        roleId: role.id,
-        profile: {
-          create: {
-            firstName: data.firstName,
-            lastName: data.lastName,
+    // 3. Database Transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.user.create({
+        data: {
+          id: authUserId!,
+          email: data.email,
+          roleId: role!.id,
+          profile: {
+            create: {
+              firstName: data.firstName,
+              lastName: data.lastName,
+            }
           }
         }
+      })
+
+      if (data.roleName === 'ADMIN') {
+        await tx.admin.create({ data: { userId: authUserId! } })
+      } else if (data.roleName === 'FACULTY') {
+        await tx.faculty.create({
+          data: {
+            userId: authUserId!,
+            employeeId: data.employeeId,
+            departmentId: data.departmentId,
+            designation: data.designation || null
+          }
+        })
+      } else if (data.roleName === 'STUDENT') {
+        await tx.student.create({
+          data: {
+            userId: authUserId!,
+            registrationNo: data.registrationNo,
+            rollNumber: data.rollNumber,
+            departmentId: data.departmentId,
+            courseId: data.courseId,
+            semesterId: data.semesterId || null
+          }
+        })
+      } else if (data.roleName === 'ALUMNI') {
+        await tx.alumni.create({
+          data: {
+            userId: authUserId!,
+            graduationYear: parseInt(data.graduationYear),
+            departmentId: data.departmentId,
+            companyName: data.companyName || null,
+            currentPosition: data.currentPosition || null
+          }
+        })
       }
     })
-
-    if (data.roleName === 'ADMIN') {
-      await prisma.admin.create({ data: { userId } })
-    } else if (data.roleName === 'FACULTY') {
-      await prisma.faculty.create({
-        data: {
-          userId,
-          employeeId: data.employeeId,
-          departmentId: data.departmentId,
-          designation: data.designation || null
-        }
-      })
-    } else if (data.roleName === 'STUDENT') {
-      await prisma.student.create({
-        data: {
-          userId,
-          registrationNo: data.registrationNo,
-          rollNumber: data.rollNumber,
-          departmentId: data.departmentId,
-          courseId: data.courseId,
-          semesterId: data.semesterId || null
-        }
-      })
-    } else if (data.roleName === 'ALUMNI') {
-      await prisma.alumni.create({
-        data: {
-          userId,
-          graduationYear: parseInt(data.graduationYear),
-          departmentId: data.departmentId,
-          companyName: data.companyName || null,
-          currentPosition: data.currentPosition || null
-        }
-      })
-    }
 
     await logAdminAction("CREATE_USER", `Created user ${data.email} with role ${data.roleName}`)
     revalidatePath("/admin/users")
     return { success: true }
   } catch (error: any) {
     console.error("Error creating user:", error)
+    
+    // 4. Rollback Supabase Auth user if Prisma transaction fails
+    if (authUserId) {
+      console.warn(`Rolling back Auth User ${authUserId} due to database failure.`)
+      await supabase.auth.admin.deleteUser(authUserId)
+    }
+    
     return { error: error.message || "Failed to create user" }
   }
 }

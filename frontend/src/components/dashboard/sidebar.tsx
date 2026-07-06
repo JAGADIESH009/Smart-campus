@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Users, BookOpen, Calendar, Settings, LogOut, CheckSquare, GraduationCap } from "lucide-react"
+import { LayoutDashboard, Users, BookOpen, Calendar, Settings, LogOut, CheckSquare, GraduationCap, Receipt, User } from "lucide-react"
 import { useAuth } from "@/lib/auth/AuthContext"
 
 export function Sidebar({ role }: { role: string }) {
@@ -16,6 +16,9 @@ export function Sidebar({ role }: { role: string }) {
       { href: "/student/attendance", label: "Attendance", icon: CheckSquare },
       { href: "/student/assignments", label: "Assignments", icon: BookOpen },
       { href: "/student/timetable", label: "Timetable", icon: Calendar },
+      { href: "/student/results", label: "Results", icon: GraduationCap },
+      { href: "/student/fees", label: "Fees", icon: Receipt },
+      { href: "/student/profile", label: "Profile", icon: User },
     ]
   } else if (role === 'FACULTY') {
     links = [

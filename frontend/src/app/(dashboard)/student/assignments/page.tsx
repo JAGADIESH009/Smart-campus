@@ -1,66 +1,68 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useAuth } from "@/lib/auth/AuthContext"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { FileUp, Calendar, CheckCircle2, Clock, FileWarning, Search, XCircle, FileText, AlertTriangle } from "lucide-react"
-
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
+import { Button } from "@/components/ui/button"
+import { FileUp, FileText, CheckCircle, Clock, UploadCloud } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
-export default function AssignmentsPage() {
-  const { token } = useAuth()
-  const [assignments, setAssignments] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [uploadingId, setUploadingId] = useState<string | null>(null)
-  const [file, setFile] = useState<File | null>(null)
-  const [filter, setFilter] = useState('ALL') // ALL, PENDING, GRADED
-
-  const supabase = createClient()
+export default function StudentAssignmentsPage() {
   const { user } = useAuth()
-  const [studentId, setStudentId] = useState<string | null>(null)
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(true)
+  const [assignments, setAssignments] = useState<any[]>([])
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
+  
+  const supabase = createClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null)
 
   const fetchAssignments = async () => {
     if (!user) return
-    setLoading(true)
+    
     try {
-      const { data: studentData } = await supabase.from('Student').select('id, courseId').eq('userId', user.id).single()
-      if (!studentData) return
-      setStudentId(studentData.id)
+      const { data: studentData } = await supabase.from('Student').select('id, courseId, semesterId').eq('userId', user.id).single()
+      const studentId = studentData?.id
 
-      const { data: subjects } = await supabase.from('Subject').select(`
-        name,
-        assignments:Assignment(
-          id, title, description, dueDate
-        )
-      `).eq('courseId', studentData.courseId)
-      
-      const allAssignments = subjects?.flatMap((sub: any) => (sub.assignments || []).map((a: any) => ({
-        ...a,
-        subjectName: sub.name
-      }))) || []
+      if (studentId) {
+        // Find subjects for the student's semester/course
+        const { data: subjects } = await supabase.from('Subject').select('id').eq('courseId', studentData.courseId)
+        const subjectIds = subjects?.map(s => s.id) || []
 
-      const { data: submissions } = await supabase.from('AssignmentSubmission').select('*').eq('studentId', studentData.id)
-      
-      const mapped = allAssignments.map((a: any) => {
-        const sub = submissions?.find(s => s.assignmentId === a.id)
-        return {
-          id: a.id,
-          title: a.title,
-          description: a.description,
-          dueDate: a.dueDate,
-          subjectName: a.subjectName,
-          status: sub?.status || 'PENDING',
-          marks: sub?.marks,
-          remarks: sub?.remarks,
-          fileUrl: sub?.fileUrl
+        if (subjectIds.length > 0) {
+          // Fetch assignments for those subjects
+          const { data: assignmentsData } = await supabase
+            .from('Assignment')
+            .select('*, Subject(name)')
+            .in('subjectId', subjectIds)
+            .order('dueDate', { ascending: true })
+
+          if (assignmentsData) {
+            // Fetch submissions for this student
+            const assignmentIds = assignmentsData.map(a => a.id)
+            const { data: submissionsData } = await supabase
+              .from('AssignmentSubmission')
+              .select('*')
+              .eq('studentId', studentId)
+              .in('assignmentId', assignmentIds)
+
+            const merged = assignmentsData.map(assignment => {
+              const submission = submissionsData?.find(s => s.assignmentId === assignment.id)
+              return {
+                ...assignment,
+                submission,
+                studentId // Pass this for the upload function
+              }
+            })
+
+            setAssignments(merged)
+          }
         }
-      })
-      
-      setAssignments(mapped)
-    } catch (e) {
-      console.error(e)
+      }
+    } catch (err) {
+      console.error(err)
     } finally {
       setLoading(false)
     }
@@ -71,174 +73,172 @@ export default function AssignmentsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
-  const handleUpload = async (assignmentId: string) => {
-    if (!file || !user || !studentId) return
-    setUploadingId(assignmentId)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !selectedAssignmentId || !user) return
 
+    // Find the assignment to get the studentId
+    const assignment = assignments.find(a => a.id === selectedAssignmentId)
+    if (!assignment?.studentId) return
+
+    setUploadingId(selectedAssignmentId)
+    
     try {
+      // 1. Upload to Supabase Storage
       const fileExt = file.name.split('.').pop()
-      const fileName = `${Math.random()}.${fileExt}`
-      const filePath = `${studentId}/${assignmentId}/${fileName}`
+      const fileName = `${selectedAssignmentId}_${assignment.studentId}_${Date.now()}.${fileExt}`
+      const filePath = `assignments/${fileName}`
 
-      const { error: uploadError } = await supabase.storage.from('assignments').upload(filePath, file)
-      
-      if (uploadError) {
-        console.error("Upload failed", uploadError)
+      const { error: uploadError, data } = await supabase.storage
+        .from('campus-files')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      // Get public URL or signed URL (we'll use public for simplicity if bucket is public, or get public URL anyway)
+      const { data: urlData } = supabase.storage.from('campus-files').getPublicUrl(filePath)
+      const fileUrl = urlData.publicUrl
+
+      // 2. Create or Update submission record in database
+      if (assignment.submission) {
+        // Update
+        const { error: dbError } = await supabase
+          .from('AssignmentSubmission')
+          .update({ fileUrl, status: 'PENDING', submittedAt: new Date().toISOString() })
+          .eq('id', assignment.submission.id)
+          
+        if (dbError) throw dbError
       } else {
-        const { data: publicUrlData } = supabase.storage.from('assignments').getPublicUrl(filePath)
-        
-        await supabase.from('AssignmentSubmission').upsert({
-          assignmentId,
-          studentId,
-          fileUrl: publicUrlData.publicUrl,
-          status: 'SUBMITTED'
-        }, { onConflict: 'assignmentId, studentId' })
-        
-        await fetchAssignments()
-        setFile(null)
+        // Insert
+        const { error: dbError } = await supabase
+          .from('AssignmentSubmission')
+          .insert({
+            assignmentId: selectedAssignmentId,
+            studentId: assignment.studentId,
+            fileUrl,
+            status: 'PENDING'
+          })
+          
+        if (dbError) throw dbError
       }
-    } catch (e) {
-      console.error(e)
+
+      toast({ title: "Success", description: "Assignment uploaded successfully." })
+      await fetchAssignments() // Refresh list
+      
+    } catch (error: any) {
+      console.error(error)
+      toast({ title: "Upload Failed", description: error.message || "An error occurred.", variant: "destructive" })
     } finally {
       setUploadingId(null)
+      setSelectedAssignmentId(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
-  const getDaysRemaining = (dueDate: string) => {
-    const diffTime = Math.abs(new Date(dueDate).getTime() - new Date().getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    const isPast = new Date(dueDate) < new Date()
-    return { diffDays, isPast }
+  const triggerFileInput = (assignmentId: string) => {
+    setSelectedAssignmentId(assignmentId)
+    fileInputRef.current?.click()
   }
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading assignments...</div>
 
-  const filtered = assignments.filter(a => {
-    if (filter === 'PENDING') return a.status === 'PENDING'
-    if (filter === 'GRADED') return a.status === 'GRADED'
-    return true
-  })
-
   return (
-    <div className="space-y-8 animate-in fade-in duration-700 max-w-5xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Assignments</h1>
-          <p className="text-muted-foreground mt-1">Submit your work and view grades.</p>
-        </div>
-        
-        <div className="flex gap-2">
-          {['ALL', 'PENDING', 'SUBMITTED', 'GRADED'].map(f => (
-            <button 
-              key={f} 
-              onClick={() => setFilter(f)}
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${filter === f ? 'bg-primary text-primary-foreground shadow-lg' : 'bg-muted text-muted-foreground hover:bg-primary/20'}`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Assignments</h1>
+        <p className="text-muted-foreground mt-1">Manage and submit your course work</p>
       </div>
 
-      <div className="grid gap-6">
-        {filtered.map(assignment => {
-          const { diffDays, isPast } = getDaysRemaining(assignment.dueDate)
-          const isPending = assignment.status === 'PENDING'
-          
-          return (
-            <Card key={assignment.id} className={`glass bg-card/60 transition-all hover:border-primary/50 flex flex-col md:flex-row overflow-hidden ${isPast && isPending ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : ''}`}>
-              <div className="flex-1 flex flex-col p-6 border-b md:border-b-0 md:border-r border-white/5">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-sm font-bold text-primary tracking-wider uppercase">{assignment.subjectName}</span>
-                  {assignment.status === 'GRADED' && <Badge color="green"><CheckCircle2 size={12} className="mr-1"/> Graded</Badge>}
-                  {assignment.status === 'SUBMITTED' && <Badge color="blue"><Clock size={12} className="mr-1"/> In Review</Badge>}
-                  {isPending && !isPast && <Badge color="yellow"><Clock size={12} className="mr-1"/> Pending</Badge>}
-                  {isPending && isPast && <Badge color="red"><AlertTriangle size={12} className="mr-1"/> Overdue</Badge>}
-                </div>
-                <CardTitle className="text-xl mb-2">{assignment.title}</CardTitle>
-                <CardDescription className="text-foreground/80 leading-relaxed max-w-2xl flex-1">
-                  {assignment.description || 'No description provided.'}
-                </CardDescription>
-                
-                {assignment.remarks && (
-                  <div className="mt-4 p-4 bg-muted/50 rounded-xl border border-white/5 flex gap-3">
-                    <FileText className="text-primary mt-0.5" size={18} />
-                    <div>
-                      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Faculty Feedback</div>
-                      <div className="text-sm italic">"{assignment.remarks}"</div>
-                    </div>
-                  </div>
-                )}
-              </div>
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        className="hidden" 
+        onChange={handleFileUpload}
+        accept=".pdf,.doc,.docx,.ppt,.pptx,.zip,.png,.jpg,.jpeg,.txt" 
+      />
 
-              <div className="w-full md:w-72 bg-background/30 p-6 flex flex-col justify-center border-l border-white/5">
-                <div className="mb-6 flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground font-medium">
-                    <Calendar size={16}/> Due Date
-                  </div>
-                  <div className={`font-bold ${isPast && isPending ? 'text-red-500' : ''}`}>
-                    {new Date(assignment.dueDate).toLocaleDateString()}
-                  </div>
-                </div>
+      {assignments.length === 0 ? (
+        <div className="text-center p-12 glass rounded-xl border border-white/10">
+          <p className="text-muted-foreground">No assignments found for your enrolled subjects.</p>
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {assignments.map((assignment) => {
+            const isSubmitted = !!assignment.submission
+            const isGraded = assignment.submission?.status === 'GRADED'
+            const dueDate = new Date(assignment.dueDate)
+            const isOverdue = !isSubmitted && dueDate < new Date()
 
-                {assignment.status === 'GRADED' ? (
-                  <div className="text-center py-4 bg-green-500/10 border border-green-500/20 rounded-xl">
-                    <div className="text-3xl font-black text-green-500">{assignment.marks} <span className="text-sm opacity-50">/ 10</span></div>
-                    <div className="text-xs font-bold uppercase tracking-wider text-green-500/70 mt-1">Score</div>
+            return (
+              <Card key={assignment.id} className={`glass bg-card/50 flex flex-col ${isOverdue ? 'border-red-500/30' : 'border-white/10'}`}>
+                <CardHeader className="pb-3">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-semibold px-2 py-1 bg-secondary/50 rounded text-muted-foreground">
+                      {assignment.Subject?.name}
+                    </span>
+                    {isGraded ? (
+                      <span className="flex items-center text-xs font-bold text-green-500"><CheckCircle className="w-3 h-3 mr-1"/> GRADED</span>
+                    ) : isSubmitted ? (
+                      <span className="flex items-center text-xs font-bold text-blue-500"><CheckCircle className="w-3 h-3 mr-1"/> SUBMITTED</span>
+                    ) : isOverdue ? (
+                      <span className="flex items-center text-xs font-bold text-red-500"><Clock className="w-3 h-3 mr-1"/> OVERDUE</span>
+                    ) : (
+                      <span className="flex items-center text-xs font-bold text-orange-500"><Clock className="w-3 h-3 mr-1"/> PENDING</span>
+                    )}
                   </div>
-                ) : assignment.status === 'SUBMITTED' ? (
-                  <div className="text-center py-6 border border-dashed border-white/10 rounded-xl">
-                    <FileWarning size={24} className="mx-auto text-blue-500 opacity-50 mb-2"/>
-                    <div className="text-sm font-semibold text-blue-500">File Submitted</div>
-                    <div className="text-xs text-muted-foreground mt-1">Awaiting evaluation</div>
+                  <CardTitle className="text-xl line-clamp-2">{assignment.title}</CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1 space-y-4">
+                  <p className="text-sm text-muted-foreground line-clamp-3">
+                    {assignment.description || "No description provided."}
+                  </p>
+                  
+                  <div className="text-xs font-medium text-foreground/70 bg-background/50 p-2 rounded-md">
+                    Due: {dueDate.toLocaleDateString()} at {dueDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="text-center">
-                      <div className={`text-2xl font-black ${isPast ? 'text-red-500' : 'text-yellow-500'}`}>
-                        {diffDays} {diffDays === 1 ? 'Day' : 'Days'}
-                      </div>
-                      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mt-1">
-                        {isPast ? 'Overdue By' : 'Remaining'}
-                      </div>
+
+                  {isGraded && (
+                    <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                      <div className="text-green-400 font-bold mb-1">Marks: {assignment.submission.marks}</div>
+                      {assignment.submission.remarks && (
+                        <p className="text-xs text-green-500/80">{assignment.submission.remarks}</p>
+                      )}
                     </div>
-                    <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} className="bg-background/50 text-xs" />
-                    <Button 
-                      onClick={() => handleUpload(assignment.id)} 
-                      disabled={!file || uploadingId === assignment.id}
-                      className="w-full shadow-lg"
+                  )}
+
+                  {isSubmitted && assignment.submission.fileUrl && (
+                    <a 
+                      href={assignment.submission.fileUrl} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 hover:underline p-2 bg-blue-500/10 rounded-md"
                     >
-                      {uploadingId === assignment.id ? 'Uploading...' : <><FileUp size={16} className="mr-2"/> Submit Work</>}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </Card>
-          )
-        })}
-        
-        {filtered.length === 0 && (
-          <div className="text-center py-24 glass rounded-3xl border border-dashed border-white/10">
-            <Search size={48} className="mx-auto text-muted-foreground opacity-20 mb-4" />
-            <div className="text-xl font-bold">No assignments found</div>
-            <div className="text-muted-foreground mt-2">You don't have any {filter.toLowerCase()} assignments at the moment.</div>
-          </div>
-        )}
-      </div>
+                      <FileText className="w-4 h-4" />
+                      View Submission
+                    </a>
+                  )}
+                </CardContent>
+                <CardFooter className="pt-2 border-t border-white/5">
+                  <Button 
+                    className="w-full" 
+                    variant={isSubmitted ? "outline" : "default"}
+                    disabled={uploadingId === assignment.id || isGraded}
+                    onClick={() => triggerFileInput(assignment.id)}
+                  >
+                    {uploadingId === assignment.id ? (
+                      "Uploading..."
+                    ) : isSubmitted ? (
+                      <><UploadCloud className="w-4 h-4 mr-2" /> Replace File</>
+                    ) : (
+                      <><FileUp className="w-4 h-4 mr-2" /> Upload Submission</>
+                    )}
+                  </Button>
+                </CardFooter>
+              </Card>
+            )
+          })}
+        </div>
+      )}
     </div>
-  )
-}
-
-function Badge({ color, children }: any) {
-  const colors: Record<string, string> = {
-    green: "bg-green-500/10 text-green-500",
-    red: "bg-red-500/10 text-red-500",
-    yellow: "bg-yellow-500/10 text-yellow-500",
-    blue: "bg-blue-500/10 text-blue-500",
-  }
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-wider ${colors[color]}`}>
-      {children}
-    </span>
   )
 }

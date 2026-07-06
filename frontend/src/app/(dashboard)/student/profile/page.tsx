@@ -3,58 +3,43 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth/AuthContext"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { UserCircle, MapPin, Phone, Mail, GraduationCap, Calendar, Download, Edit2, ShieldAlert } from "lucide-react"
-
 import { createClient } from "@/lib/supabase/client"
+import { User, Phone, MapPin, Mail, Calendar, Droplet, Hash, BookOpen, GraduationCap, Users } from "lucide-react"
 
-export default function ProfilePage() {
-  const { token } = useAuth()
-  const [profile, setProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [isEditing, setIsEditing] = useState(false)
-
-  const supabase = createClient()
+export default function StudentProfilePage() {
   const { user } = useAuth()
+  const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState<any>(null)
+  
+  const supabase = createClient()
 
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user) return
       
       try {
-        const { data: studentData, error } = await supabase.from('Student').select(`
-          id, registrationNo, rollNumber, academicStatus, cgpa, creditsEarned, parentName, parentContact,
-          department:Department(name),
-          course:Course(name),
-          section:Section(name),
-          semester:Semester(name),
-          user:User(
+        const { data } = await supabase
+          .from('User')
+          .select(`
             email,
-            profile:UserProfile(firstName, lastName, profilePhoto, contactNumber, dateOfBirth, bloodGroup, address)
-          )
-        `).eq('userId', user.id).single()
-
-        if (error) throw error
-
-        if (studentData) {
-          const userObj = Array.isArray(studentData.user) ? studentData.user[0] : studentData.user
-          const userProfile = userObj?.profile ? (Array.isArray(userObj.profile) ? userObj.profile[0] : userObj.profile) : null
-          const dept = Array.isArray(studentData.department) ? studentData.department[0] : studentData.department
-          const course = Array.isArray(studentData.course) ? studentData.course[0] : studentData.course
-          const section = Array.isArray(studentData.section) ? studentData.section[0] : studentData.section
-          const sem = Array.isArray(studentData.semester) ? studentData.semester[0] : studentData.semester
-
-          setProfile({
-            ...userProfile,
-            ...studentData,
-            user: { email: userObj?.email },
-            department: dept,
-            course: course,
-            section: section,
-            branch: dept?.name,
-            currentSemester: sem?.name ? sem.name.replace('Semester ', '') : 'N/A'
-          })
+            profile:UserProfile(*),
+            student:Student(
+              registrationNo, 
+              rollNumber, 
+              cgpa,
+              parentName,
+              parentContact,
+              Department(name),
+              Course(name),
+              Section(name),
+              Semester(name)
+            )
+          `)
+          .eq('id', user.id)
+          .single()
+          
+        if (data) {
+          setProfile(data)
         }
       } catch (err) {
         console.error(err)
@@ -62,137 +47,112 @@ export default function ProfilePage() {
         setLoading(false)
       }
     }
+    
     fetchProfile()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
-  if (loading) return <div className="p-8 text-center animate-pulse">Loading profile...</div>
+  if (loading) return <div className="p-8 text-center animate-pulse">Loading profile information...</div>
+  if (!profile) return <div className="p-8 text-center text-red-500">Failed to load profile.</div>
+
+  const p = profile.profile[0] || {}
+  const s = profile.student[0] || {}
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700 max-w-5xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Student Profile</h1>
-          <p className="text-muted-foreground mt-1">Manage your personal and academic information.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="border-white/10 glass">
-            <Download size={16} className="mr-2"/> Download ID Card
-          </Button>
-          <Button onClick={() => setIsEditing(!isEditing)} className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg">
-            <Edit2 size={16} className="mr-2"/> {isEditing ? 'Cancel Edit' : 'Edit Profile'}
-          </Button>
-        </div>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Student Profile</h1>
+        <p className="text-muted-foreground mt-1">Your personal and academic information</p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        
-        {/* Left Column - Avatar & Core Info */}
-        <div className="space-y-6 md:col-span-1">
-          <Card className="glass bg-card/60 text-center py-8">
-            <div className="mx-auto w-32 h-32 rounded-full bg-primary/20 flex items-center justify-center mb-4 relative group">
-              {profile.profilePhoto ? (
-                <img src={profile.profilePhoto} alt="Profile" className="w-full h-full rounded-full object-cover" />
-              ) : (
-                <span className="text-5xl font-bold text-primary">{profile.firstName?.charAt(0)}{profile.lastName?.charAt(0)}</span>
-              )}
-              {isEditing && (
-                <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="text-xs font-bold text-white uppercase tracking-wider">Change Photo</span>
-                </div>
-              )}
+        {/* Personal Info */}
+        <Card className="glass md:col-span-1 border-white/10 shadow-xl bg-card/60">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center mb-4 border-2 border-primary/50">
+              <User className="w-12 h-12 text-primary" />
             </div>
-            <h2 className="text-2xl font-bold">{profile.firstName} {profile.lastName}</h2>
-            <p className="text-primary font-medium">{profile.department?.name}</p>
-            <div className="mt-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-500/10 text-green-500 border border-green-500/20 uppercase tracking-wider">
-              {profile.academicStatus}
+            <CardTitle className="text-2xl">{p.firstName} {p.lastName}</CardTitle>
+            <CardDescription className="text-primary font-medium">{s.rollNumber}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 mt-4">
+            <div className="flex items-center gap-3 text-sm">
+              <Mail className="w-4 h-4 text-muted-foreground" />
+              <span>{profile.email}</span>
             </div>
-          </Card>
+            <div className="flex items-center gap-3 text-sm">
+              <Phone className="w-4 h-4 text-muted-foreground" />
+              <span>{p.contactNumber || 'N/A'}</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm">
+              <Calendar className="w-4 h-4 text-muted-foreground" />
+              <span>{p.dateOfBirth ? new Date(p.dateOfBirth).toLocaleDateString() : 'N/A'}</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm">
+              <Droplet className="w-4 h-4 text-muted-foreground" />
+              <span>Blood Group: {p.bloodGroup || 'N/A'}</span>
+            </div>
+            <div className="flex items-start gap-3 text-sm">
+              <MapPin className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+              <span className="leading-tight">{p.address || 'N/A'}</span>
+            </div>
+          </CardContent>
+        </Card>
 
-          <Card className="glass bg-card/60">
-            <CardHeader className="pb-3 border-b border-white/5">
-              <CardTitle className="text-lg">Academic Status</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground text-sm font-medium">CGPA</span>
-                <span className="font-bold">{profile.cgpa || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground text-sm font-medium">Credits Earned</span>
-                <span className="font-bold">{profile.creditsEarned || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground text-sm font-medium">Current Semester</span>
-                <span className="font-bold">Semester {profile.currentSemester || 'N/A'}</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column - Details */}
         <div className="md:col-span-2 space-y-6">
-          <Card className="glass bg-card/60 relative overflow-hidden">
-            <CardHeader className="border-b border-white/5 pb-4 flex flex-row items-center gap-2">
-              <GraduationCap className="text-primary" size={20} />
-              <CardTitle className="text-xl m-0">Academic Details</CardTitle>
+          {/* Academic Info */}
+          <Card className="glass border-white/10 shadow-xl bg-card/60">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <GraduationCap className="w-5 h-5 text-primary" />
+                Academic Details
+              </CardTitle>
             </CardHeader>
-            <CardContent className="pt-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8">
-                <DetailField label="Registration Number" value={profile.registrationNo} icon={<ShieldAlert size={14}/>} />
-                <DetailField label="Roll Number" value={profile.rollNumber} icon={<ShieldAlert size={14}/>} />
-                <DetailField label="Course" value={profile.course?.name} />
-                <DetailField label="Branch" value={profile.branch} />
-                <DetailField label="Section" value={profile.section?.name || 'Unassigned'} />
-                <DetailField label="Batch Year" value={profile.batch || '2023-2027'} />
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1.5"><BookOpen className="w-3.5 h-3.5"/> Department</p>
+                  <p className="font-medium">{s.Department?.name || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1.5"><GraduationCap className="w-3.5 h-3.5"/> Course</p>
+                  <p className="font-medium">{s.Course?.name || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1.5"><Hash className="w-3.5 h-3.5"/> Registration No.</p>
+                  <p className="font-medium font-mono text-sm">{s.registrationNo || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5"/> Current Semester</p>
+                  <p className="font-medium">{s.Semester?.name || 'N/A'} ({s.Section?.name || 'N/A'})</p>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="glass bg-card/60 relative overflow-hidden">
-            <CardHeader className="border-b border-white/5 pb-4 flex flex-row items-center gap-2">
-              <UserCircle className="text-primary" size={20} />
-              <CardTitle className="text-xl m-0">Personal & Contact</CardTitle>
+          {/* Parent/Guardian Info */}
+          <Card className="glass border-white/10 shadow-xl bg-card/60">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-primary" />
+                Parent & Emergency Contact
+              </CardTitle>
             </CardHeader>
-            <CardContent className="pt-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8">
-                <DetailField label="Email Address" value={profile.user?.email} icon={<Mail size={14}/>} />
-                <DetailField label="Phone Number" value={profile.contactNumber || 'Not provided'} icon={<Phone size={14}/>} editable={isEditing} />
-                <DetailField label="Date of Birth" value={profile.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString() : 'Not provided'} icon={<Calendar size={14}/>} />
-                <DetailField label="Blood Group" value={profile.bloodGroup || 'Not provided'} editable={isEditing} />
-                <DetailField label="Aadhaar / ID" value={profile.aadhaarNumber || 'Not provided'} />
-                <DetailField label="Parent/Guardian Name" value={profile.parentName || 'Not provided'} editable={isEditing} />
-                <DetailField label="Parent Contact" value={profile.parentContact || 'Not provided'} editable={isEditing} />
-                <div className="sm:col-span-2">
-                  <DetailField label="Permanent Address" value={profile.address || 'Not provided'} icon={<MapPin size={14}/>} editable={isEditing} fullWidth />
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Parent/Guardian Name</p>
+                  <p className="font-medium">{s.parentName || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5"/> Contact Number</p>
+                  <p className="font-medium">{s.parentContact || 'N/A'}</p>
                 </div>
               </div>
-              
-              {isEditing && (
-                <div className="mt-8 pt-6 border-t border-white/5 flex justify-end">
-                  <Button onClick={() => { alert('Profile updated successfully!'); setIsEditing(false); }} className="bg-primary text-primary-foreground shadow-lg px-8">Save Changes</Button>
-                </div>
-              )}
             </CardContent>
           </Card>
         </div>
       </div>
-    </div>
-  )
-}
-
-function DetailField({ label, value, icon, editable = false, fullWidth = false }: any) {
-  return (
-    <div className={`space-y-1.5 ${fullWidth ? 'w-full' : ''}`}>
-      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-        {icon && <span className="opacity-70">{icon}</span>}
-        {label}
-      </label>
-      {editable ? (
-        <Input defaultValue={value !== 'Not provided' ? value : ''} className="bg-background/50 border-white/10 h-9" />
-      ) : (
-        <div className="font-medium text-[15px]">{value}</div>
-      )}
     </div>
   )
 }
