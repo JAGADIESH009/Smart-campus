@@ -270,10 +270,10 @@ export default function FacultyAttendancePage() {
                             </td>
                             <td className="px-6 py-4 text-center">
                               <AttendanceToggle
-                                isPresent={status === 'PRESENT'}
-                                onChange={(present) => setAttendanceState(s => ({
+                                status={status}
+                                onChange={(newStatus) => setAttendanceState(s => ({
                                   ...s,
-                                  [student.id]: { ...s[student.id], status: present ? 'PRESENT' : 'ABSENT' }
+                                  [student.id]: { ...s[student.id], status: newStatus }
                                 }))}
                               />
                             </td>
@@ -305,22 +305,26 @@ export default function FacultyAttendancePage() {
   )
 }
 
-function AttendanceToggle({ isPresent, onChange }: { isPresent: boolean, onChange: (val: boolean) => void }) {
+function AttendanceToggle({ status, onChange }: { status: string, onChange: (val: string) => void }) {
+  const options = [
+    { value: 'PRESENT', label: 'Present', color: 'text-green-500 bg-green-500/10 border-green-500/30' },
+    { value: 'ABSENT', label: 'Absent', color: 'text-red-500 bg-red-500/10 border-red-500/30' },
+    { value: 'LATE', label: 'Late', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' },
+    { value: 'ON_DUTY', label: 'On Duty', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' }
+  ]
   return (
-    <div className="flex items-center justify-center gap-3">
-      <button
-        onClick={() => onChange(!isPresent)}
-        className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background ${isPresent ? 'bg-green-500' : 'bg-red-500'
+    <div className="flex items-center justify-center gap-1.5">
+      {options.map(opt => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={`px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-md border transition-all ${
+            status === opt.value ? opt.color : 'text-muted-foreground border-transparent hover:bg-white/5'
           }`}
-      >
-        <span
-          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-300 ease-in-out ${isPresent ? 'translate-x-8' : 'translate-x-1'
-            }`}
-        />
-      </button>
-      <span className={`text-sm font-semibold w-16 text-left transition-colors duration-300 ${isPresent ? 'text-green-500' : 'text-red-500'}`}>
-        {isPresent ? 'Present' : 'Absent'}
-      </span>
+        >
+          {opt.label}
+        </button>
+      ))}
     </div>
   )
 }

@@ -202,6 +202,7 @@ async function main() {
         startTime: '09:00',
         endTime: '10:30',
         room: `Room ${faker.string.numeric(3)}`,
+        building: 'Main Block',
         subjectId: createdSubjects[0].id,
         sectionId: sectionA.id,
         facultyId: createdFacultyIds[0]
@@ -213,10 +214,23 @@ async function main() {
         startTime: '11:00',
         endTime: '12:30',
         room: `Lab ${faker.string.numeric(2)}`,
+        building: 'Science Block',
         subjectId: createdSubjects[1].id,
         sectionId: sectionA.id,
         facultyId: createdFacultyIds[1],
         type: 'LAB'
+      }
+    });
+    // Add Lunch Break
+    await prisma.timetable.create({
+      data: {
+        dayOfWeek: day,
+        startTime: '12:30',
+        endTime: '13:30',
+        room: 'Cafeteria',
+        building: 'Student Center',
+        type: 'LUNCH',
+        sectionId: sectionA.id
       }
     });
   }
@@ -279,7 +293,9 @@ async function main() {
         title: `${subject.name} - Assignment 1`,
         description: 'Complete the theoretical questions listed in the attached document.',
         dueDate: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000),
-        subjectId: subject.id
+        subjectId: subject.id,
+        maxMarks: 100,
+        attachments: ['https://example.com/assignment-question.pdf']
       }
     });
 
@@ -290,6 +306,7 @@ async function main() {
             assignmentId: assignment.id,
             studentId: studentId,
             fileUrl: 'https://placeholder.com/doc.pdf',
+            attachments: ['https://placeholder.com/doc.pdf'],
             status: 'PENDING'
           }
         });

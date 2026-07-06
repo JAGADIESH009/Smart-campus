@@ -257,7 +257,9 @@ model Assignment {
   title       String
   description String?
   dueDate     DateTime
-  fileUrl     String?
+  fileUrl     String?  // Legacy or single file
+  attachments String[] @default([])
+  maxMarks    Float?   @default(100)
   subjectId   String
   subject     Subject  @relation(fields: [subjectId], references: [id])
   
@@ -273,7 +275,8 @@ model AssignmentSubmission {
   assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   studentId    String
   student      Student    @relation(fields: [studentId], references: [id])
-  fileUrl      String
+  fileUrl      String?  // Legacy or single file
+  attachments  String[] @default([])
   status       String     @default("PENDING") // PENDING, GRADED
   marks        Float?
   remarks      String?
@@ -328,10 +331,11 @@ model Timetable {
   startTime String
   endTime   String
   room      String
+  building  String?
   type      String   @default("LECTURE")
   
-  subjectId String
-  subject   Subject  @relation(fields: [subjectId], references: [id])
+  subjectId String?
+  subject   Subject?  @relation(fields: [subjectId], references: [id])
   sectionId String
   section   Section  @relation(fields: [sectionId], references: [id])
   facultyId String?

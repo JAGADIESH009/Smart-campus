@@ -85,14 +85,16 @@ export default function StudentTimetablePage() {
                     const facultyProfile = cls.Faculty?.user?.profile
                     const facultyName = facultyProfile ? `${facultyProfile.firstName} ${facultyProfile.lastName}` : 'TBD'
 
+                    const isLunch = cls.type === 'LUNCH'
+
                     return (
                       <div 
                         key={cls.id} 
-                        className={`p-3 rounded-lg border ${isActive ? 'bg-primary/20 border-primary shadow-sm' : 'bg-secondary/20 border-white/5'}`}
+                        className={`p-3 rounded-lg border ${isActive ? 'bg-primary/20 border-primary shadow-sm' : isLunch ? 'bg-muted/30 border-dashed border-white/10' : 'bg-secondary/20 border-white/5'}`}
                       >
                         <div className="flex justify-between items-start mb-1">
-                          <h4 className="font-bold text-sm">{cls.Subject?.name}</h4>
-                          <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${cls.type === 'LAB' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                          <h4 className={`font-bold text-sm ${isLunch ? 'text-muted-foreground' : ''}`}>{isLunch ? 'Lunch Break' : cls.Subject?.name}</h4>
+                          <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${isLunch ? 'bg-muted text-muted-foreground' : cls.type === 'LAB' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                             {cls.type}
                           </span>
                         </div>
@@ -104,9 +106,9 @@ export default function StudentTimetablePage() {
                           <div className="flex items-center justify-between mt-1">
                             <div className="flex items-center gap-1.5">
                               <MapPin className="w-3.5 h-3.5" />
-                              {cls.room}
+                              {cls.room} {cls.building ? `(${cls.building})` : ''}
                             </div>
-                            <span className="truncate max-w-[120px]" title={facultyName}>Prof. {facultyName}</span>
+                            {!isLunch && <span className="truncate max-w-[120px]" title={facultyName}>Prof. {facultyName}</span>}
                           </div>
                         </div>
                       </div>
