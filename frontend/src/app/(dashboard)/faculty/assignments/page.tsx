@@ -411,6 +411,13 @@ export default function FacultyAssignmentsPage() {
                       }}
                       onCreateOption={async (inputValue) => {
                         try {
+                          // Check for case-insensitive duplicate
+                          const existing = subjects.find(s => s.name.toLowerCase() === inputValue.toLowerCase())
+                          if (existing) {
+                            setFormData({...formData, subjectId: existing.id})
+                            return
+                          }
+
                           const code = inputValue.substring(0, 3).toUpperCase() + Math.floor(Math.random() * 1000)
                           // Insert the new subject into Supabase
                           const { data, error } = await supabase.from('Subject').insert([{
