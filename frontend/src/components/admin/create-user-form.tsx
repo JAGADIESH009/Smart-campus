@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { createUserAction } from "@/app/actions/user-actions"
+import { createUserAction } from "@/actions/user-actions"
 import { useToast } from "@/hooks/use-toast"
 import { SearchableCombobox } from "@/components/ui/searchable-combobox"
 
@@ -23,7 +23,7 @@ export function CreateUserForm({ onSuccess, departments, courses }: { onSuccess:
   const courseOptions = filteredCourses.map(c => ({ value: c.id, label: c.name }))
 
   const handleCreateDepartment = async (name: string) => {
-    const { createDepartmentAction } = await import("@/app/actions/department-actions")
+    const { createDepartmentAction } = await import("@/actions/department-actions")
     const res = await createDepartmentAction(name)
     if (res.error) throw new Error(res.error)
     if (res.department) {
@@ -38,7 +38,7 @@ export function CreateUserForm({ onSuccess, departments, courses }: { onSuccess:
       toast({ title: "Error", description: "Select a department first.", variant: "destructive" })
       return
     }
-    const { createCourseAction } = await import("@/app/actions/course-actions")
+    const { createCourseAction } = await import("@/actions/course-actions")
     const res = await createCourseAction(name, departmentId)
     if (res.error) throw new Error(res.error)
     if (res.course) {

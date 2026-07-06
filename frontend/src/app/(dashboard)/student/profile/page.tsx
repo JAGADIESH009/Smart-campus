@@ -1,13 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/context/AuthContext"
+import { useAuth } from "@/lib/auth/AuthContext"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { UserCircle, MapPin, Phone, Mail, GraduationCap, Calendar, Download, Edit2, ShieldAlert } from "lucide-react"
 
-import { createClient } from "@/utils/supabase/client"
+import { createClient } from "@/lib/supabase/client"
 
 export default function ProfilePage() {
   const { token } = useAuth()
@@ -92,7 +92,7 @@ export default function ProfilePage() {
           <Card className="glass bg-card/60 text-center py-8">
             <div className="mx-auto w-32 h-32 rounded-full bg-primary/20 flex items-center justify-center mb-4 relative group">
               {profile.profilePhoto ? (
-                <img src={profile.profilePhoto.startsWith('http') ? profile.profilePhoto : `http://localhost:5000${profile.profilePhoto}`} alt="Profile" className="w-full h-full rounded-full object-cover" />
+                <img src={profile.profilePhoto} alt="Profile" className="w-full h-full rounded-full object-cover" />
               ) : (
                 <span className="text-5xl font-bold text-primary">{profile.firstName?.charAt(0)}{profile.lastName?.charAt(0)}</span>
               )}

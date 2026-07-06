@@ -1,13 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/context/AuthContext"
+import { useAuth } from "@/lib/auth/AuthContext"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FileText, CheckCircle2, Plus, X, Search } from "lucide-react"
 
-import { createClient } from "@/utils/supabase/client"
+import { createClient } from "@/lib/supabase/client"
 
 export default function FacultyAssignmentsPage() {
   const { token } = useAuth()
@@ -166,7 +166,7 @@ export default function FacultyAssignmentsPage() {
                             {sub.marks !== null ? <span className="text-green-500">{sub.marks}</span> : '-'}
                           </td>
                           <td className="px-6 py-4 text-right space-x-2">
-                            <a href={sub.fileUrl?.startsWith('http') ? sub.fileUrl : `http://localhost:5000${sub.fileUrl}`} target="_blank" rel="noreferrer">
+                            <a href={sub.fileUrl} target="_blank" rel="noreferrer">
                               <Button variant="outline" size="sm" className="h-8 border-white/10">
                                 <FileText size={14} className="mr-2"/> View File
                               </Button>

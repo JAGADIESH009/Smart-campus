@@ -1,6 +1,6 @@
 "use client"
 
-import { useAuth } from "@/context/AuthContext"
+import { useAuth } from "@/lib/auth/AuthContext"
 import { Search, Bell, Menu, User, Settings, LogOut, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"

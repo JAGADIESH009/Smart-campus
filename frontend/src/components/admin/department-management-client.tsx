@@ -22,7 +22,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { createDepartmentAction, updateDepartmentAction, deleteDepartmentAction } from "@/app/actions/department-actions"
+import { createDepartmentAction, updateDepartmentAction, deleteDepartmentAction } from "@/actions/department-actions"
 
 export function DepartmentManagementClient({ initialDepartments }: { initialDepartments: any[] }) {
   const [departments, setDepartments] = useState(initialDepartments)

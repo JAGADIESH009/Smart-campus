@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { createCourseAction, updateCourseAction, deleteCourseAction } from "@/app/actions/course-actions"
+import { createCourseAction, updateCourseAction, deleteCourseAction } from "@/actions/course-actions"
 import Link from "next/link"
 
 export function CourseManagementClient({ initialCourses, departments }: { initialCourses: any[], departments: any[] }) {

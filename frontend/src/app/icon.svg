@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A855F7" />
+      <stop offset="100%" stop-color="#5B21B6" />
+    </linearGradient>
+  </defs>
+  
+  <path d="M 256 32 C 320 48 400 64 440 76 C 445 77 448 81 448 86 C 448 240 416 360 262 476 C 258 479 254 479 250 476 C 96 360 64 240 64 86 C 64 81 67 77 72 76 C 112 64 192 48 256 32 Z" fill="url(#bg)" />
+
+  <g transform="translate(0, 8)">
+    <path d="M 256 270 L 256 384" stroke="white" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 256 310 L 160 360" stroke="white" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 256 310 L 352 360" stroke="white" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <circle cx="256" cy="384" r="24" fill="white" />
+    <circle cx="160" cy="360" r="24" fill="white" />
+    <circle cx="352" cy="360" r="24" fill="white" />
+    
+    <path d="M 112 180 L 256 100 L 400 180 L 256 260 Z" fill="white" />
+    
+    <path d="M 184 220 V 270 C 184 310 328 310 328 270 V 220" fill="none" stroke="white" stroke-width="24" stroke-linecap="round" />
+    
+    <path d="M 400 180 V 250" fill="none" stroke="white" stroke-width="16" stroke-linecap="round" />
+    <circle cx="400" cy="266" r="16" fill="white" />
+  </g>
+</svg>

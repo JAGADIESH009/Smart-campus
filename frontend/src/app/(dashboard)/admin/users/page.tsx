@@ -29,6 +29,7 @@ export default async function UsersPage() {
     }
 
     return {
+      ...u,
       id: u.id,
       email: u.email,
       name: u.profile ? `${u.profile.firstName} ${u.profile.lastName}` : "No Profile",

@@ -1,13 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/context/AuthContext"
+import { useAuth } from "@/lib/auth/AuthContext"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Users, ChevronRight, UserCircle, Search, Calendar, FileText } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
-import { createClient } from "@/utils/supabase/client"
+import { createClient } from "@/lib/supabase/client"
 
 export default function FacultyStudentsPage() {
   const { token } = useAuth()
@@ -202,7 +202,7 @@ export default function FacultyStudentsPage() {
                           <tr key={student.id} className="hover:bg-muted/30 transition-colors">
                             <td className="px-6 py-4 font-medium flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold shrink-0">
-                                {student.profilePhoto ? <img src={student.profilePhoto.startsWith('http') ? student.profilePhoto : `http://localhost:5000${student.profilePhoto}`} className="w-full h-full object-cover" /> : student.name.charAt(0)}
+                                {student.profilePhoto ? <img src={student.profilePhoto} className="w-full h-full object-cover" /> : student.name.charAt(0)}
                               </div>
                               <div>
                                 <div>{student.name}</div>

@@ -221,7 +221,7 @@ export default function LandingPage() {
           </div>
           
           <div className="border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-            <p>© 2026 Smart Campus ERP. All rights reserved.</p>
+            <p>© 2026 Smart Campus. All rights reserved.</p>
             <div className="flex gap-6">
               <a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a>
               <a href="#" className="hover:text-foreground transition-colors">Terms of Service</a>

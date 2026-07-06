@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/context/AuthContext"
+import { useAuth } from "@/lib/auth/AuthContext"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Calendar, FileText, ArrowLeft } from "lucide-react"
 import { useSearchParams } from "next/navigation"
-import { createClient } from "@/utils/supabase/client"
+import { createClient } from "@/lib/supabase/client"
 
 export default function FacultyStudent360Page({ params }: { params: { id: string } }) {
   const { token } = useAuth()
@@ -82,7 +82,7 @@ export default function FacultyStudent360Page({ params }: { params: { id: string
         <CardHeader className="bg-card/80 backdrop-blur-xl border-b border-white/5 py-8">
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className="w-24 h-24 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-4xl shadow-inner overflow-hidden">
-              {student.profilePhoto ? <img src={student.profilePhoto.startsWith('http') ? student.profilePhoto : `http://localhost:5000${student.profilePhoto}`} className="w-full h-full object-cover"/> : student.name.charAt(0)}
+              {student.profilePhoto ? <img src={student.profilePhoto} className="w-full h-full object-cover"/> : student.name.charAt(0)}
             </div>
             <div className="text-center sm:text-left">
               <CardTitle className="text-3xl font-black">{student.name}</CardTitle>
