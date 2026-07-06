@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FileText, CheckCircle2, Plus, X, Search, Edit2, Trash2, UploadCloud } from "lucide-react"
+import CreatableSelect from 'react-select/creatable'
 
 import { createClient } from "@/lib/supabase/client"
 
@@ -14,6 +15,7 @@ export default function FacultyAssignmentsPage() {
   const [assignments, setAssignments] = useState<any[]>([])
   const [subjects, setSubjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [facultyId, setFacultyId] = useState<string | null>(null)
   
   const [gradingSub, setGradingSub] = useState<any>(null)
   const [marks, setMarks] = useState("")
@@ -42,17 +44,28 @@ export default function FacultyAssignmentsPage() {
     try {
       setLoading(true)
       const { data: facultyData } = await supabase.from('Faculty').select('id, subjects:Subject(id, name, code)').eq('userId', user.id).single()
+      if (facultyData) setFacultyId(facultyData.id)
       
+      // Fetch ALL subjects to allow selecting any subject
+      const { data: allSubjects } = await supabase.from('Subject').select('id, name, code').order('name')
+      setSubjects(allSubjects || [])
+
       const subs = facultyData?.subjects || []
-      setSubjects(subs)
       const subjectIds = subs.map((s: any) => s.id)
       
+      // Also include assignments they created even if subject isn't directly mapped to them in some cases
+      // But let's just fetch all assignments created by this faculty or for these subjects
+      // If we fetch all, maybe it's better to fetch by facultyId if Assignment had it. Since Assignment only has subjectId,
+      // We will fetch assignments where the subject is one of the faculty's mapped subjects, OR if they created it.
+      // Since Assignment doesn't have facultyId, we'll stick to subjectIds but also add a way to see their newly created subjects.
+      
       if (subjectIds.length === 0) {
-        setAssignments([])
-        return
+        // If they have no mapped subjects, fetch assignments for subjects they might have created?
+        // Since we don't track creator on Subject, we can just fetch all assignments for now if it's a demo, or keep it empty.
+        // The prompt says "Make it available... Immediately assign it to the assignment."
       }
 
-      const { data } = await supabase.from('Assignment')
+      let query = supabase.from('Assignment')
         .select(`
           id, title, description, dueDate, maxMarks, attachments,
           subject:Subject(id, name),
@@ -66,8 +79,15 @@ export default function FacultyAssignmentsPage() {
             )
           )
         `)
-        .in('subjectId', subjectIds)
         .order('createdAt', { ascending: false })
+      
+      if (subjectIds.length > 0) {
+        query = query.in('subjectId', subjectIds)
+      } else {
+        // Just fetch all for this demo if they have no assigned subjects so it's not totally empty if they created one
+      }
+
+      const { data } = await query
       
       if (data) {
         const mapped = data.map((a: any) => ({
@@ -130,7 +150,7 @@ export default function FacultyAssignmentsPage() {
       description: "",
       dueDate: "",
       dueTime: "23:59",
-      subjectId: subjects.length > 0 ? subjects[0].id : "",
+      subjectId: "",
       maxMarks: 100
     })
     setFiles([])
@@ -188,11 +208,19 @@ export default function FacultyAssignmentsPage() {
       
       const combinedDateTime = new Date(`${formData.dueDate}T${formData.dueTime}:00`)
 
+      const finalSubjectId = formData.subjectId
+
+      if (!finalSubjectId) {
+        alert("Please select or create a subject")
+        setIsSubmitting(false)
+        return
+      }
+
       const assignmentPayload = {
         title: formData.title,
         description: formData.description,
         dueDate: combinedDateTime.toISOString(),
-        subjectId: formData.subjectId,
+        subjectId: finalSubjectId,
         maxMarks: formData.maxMarks,
         attachments: allAttachments
       }
@@ -372,17 +400,61 @@ export default function FacultyAssignmentsPage() {
                     />
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 md:col-span-2">
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subject *</label>
-                    <select 
-                      required
-                      value={formData.subjectId}
-                      onChange={e => setFormData({...formData, subjectId: e.target.value})}
-                      className="w-full bg-background/50 border border-white/10 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      <option value="" disabled>Select Subject</option>
-                      {subjects.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
-                    </select>
+                    <CreatableSelect 
+                      isClearable
+                      options={subjects.map(s => ({ value: s.id, label: `${s.name} ${s.code ? `(${s.code})` : ''}` }))}
+                      value={formData.subjectId ? { value: formData.subjectId, label: subjects.find(s => s.id === formData.subjectId)?.name || 'Selected Subject' } : null}
+                      onChange={(newValue: any) => {
+                        setFormData({...formData, subjectId: newValue ? newValue.value : ""})
+                      }}
+                      onCreateOption={async (inputValue) => {
+                        try {
+                          const code = inputValue.substring(0, 3).toUpperCase() + Math.floor(Math.random() * 1000)
+                          // Insert the new subject into Supabase
+                          const { data, error } = await supabase.from('Subject').insert([{
+                            name: inputValue,
+                            code: code,
+                            facultyId: facultyId
+                          }]).select().single()
+                          
+                          if (error) throw error
+                          
+                          setSubjects([...subjects, data])
+                          setFormData({...formData, subjectId: data.id})
+                        } catch (e) {
+                          console.error(e)
+                          alert("Failed to create subject")
+                        }
+                      }}
+                      styles={{
+                        control: (base) => ({
+                          ...base,
+                          backgroundColor: 'rgba(0,0,0,0.2)',
+                          borderColor: 'rgba(255,255,255,0.1)',
+                          color: 'white'
+                        }),
+                        menu: (base) => ({
+                          ...base,
+                          backgroundColor: '#1a1a1a',
+                          zIndex: 9999
+                        }),
+                        option: (base, { isFocused }) => ({
+                          ...base,
+                          backgroundColor: isFocused ? 'rgba(255,255,255,0.1)' : 'transparent',
+                          color: 'white'
+                        }),
+                        singleValue: (base) => ({
+                          ...base,
+                          color: 'white'
+                        }),
+                        input: (base) => ({
+                          ...base,
+                          color: 'white'
+                        })
+                      }}
+                    />
                   </div>
 
                   <div className="space-y-1.5">

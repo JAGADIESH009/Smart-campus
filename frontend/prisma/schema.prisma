@@ -150,18 +150,18 @@ model Department {
 }
 
 model Course {
-  id           String   @id @default(uuid())
+  id           String       @id @default(uuid())
   name         String
-  code         String   @unique
-  departmentId String
-  department   Department @relation(fields: [departmentId], references: [id])
+  code         String       @unique
+  departmentId String?
+  department   Department?  @relation(fields: [departmentId], references: [id])
   
   subjects     Subject[]
   sections     Section[]
   students     Student[]
   
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 }
 
 model Semester {
@@ -180,16 +180,16 @@ model Semester {
 }
 
 model Subject {
-  id          String   @id @default(uuid())
-  name        String
-  code        String   @unique
-  credits     Int
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
-  semesterId  String?
-  semester    Semester? @relation(fields: [semesterId], references: [id])
-  facultyId   String?
-  faculty     Faculty?  @relation(fields: [facultyId], references: [id])
+  id         String       @id @default(uuid())
+  name       String
+  code       String       @unique
+  credits    Int          @default(3)
+  courseId   String?
+  course     Course?      @relation(fields: [courseId], references: [id])
+  semesterId String?
+  semester   Semester?    @relation(fields: [semesterId], references: [id])
+  facultyId  String?
+  faculty    Faculty?     @relation(fields: [facultyId], references: [id])
   
   attendances Attendance[]
   assignments Assignment[]
@@ -197,15 +197,15 @@ model Subject {
   marks       Mark[]
   timetables  Timetable[]
   
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 }
 
 model Section {
   id        String   @id @default(uuid())
   name      String   // e.g., "Section A"
-  courseId  String
-  course    Course   @relation(fields: [courseId], references: [id])
+  courseId  String?
+  course    Course?  @relation(fields: [courseId], references: [id])
   
   students  Student[]
   timetables Timetable[]

@@ -51,9 +51,13 @@ async function main() {
   console.log('Seeding departments & courses...');
   const deptsData = [
     { name: 'Computer Science and Engineering', code: 'CSE' },
-    { name: 'Computer Science and Engineering (AI & ML)', code: 'CSE-AIML' },
+    { name: 'Computer Science and Engineering (AI)', code: 'CSE (AI)' },
+    { name: 'Computer Science and Engineering (DS)', code: 'CSE (DS)' },
     { name: 'Electronics and Communication Engineering', code: 'ECE' },
-    { name: 'Mechanical Engineering', code: 'ME' },
+    { name: 'Electrical and Electronics Engineering', code: 'EEE' },
+    { name: 'Mechanical Engineering', code: 'Mechanical' },
+    { name: 'Civil Engineering', code: 'Civil' },
+    { name: 'Information Technology', code: 'IT' },
     { name: 'Master of Business Administration', code: 'MBA' }
   ];
 
@@ -68,11 +72,10 @@ async function main() {
   }
 
   const coursesData = [
-    { name: 'B.Tech Computer Science', code: 'BT-CSE', deptCode: 'CSE' },
-    { name: 'B.Tech AI & ML', code: 'BT-AIML', deptCode: 'CSE-AIML' },
-    { name: 'B.Tech ECE', code: 'BT-ECE', deptCode: 'ECE' },
-    { name: 'M.Tech Software Engineering', code: 'MT-SE', deptCode: 'CSE' },
-    { name: 'MBA General', code: 'MBA-GEN', deptCode: 'MBA' }
+    { name: 'B.Tech', code: 'BT', deptCode: 'CSE' },
+    { name: 'M.Tech', code: 'MT', deptCode: 'CSE' },
+    { name: 'MCA', code: 'MCA', deptCode: 'CSE' },
+    { name: 'MBA', code: 'MBA-GEN', deptCode: 'MBA' }
   ];
 
   const createdCourses = [];
@@ -95,7 +98,7 @@ async function main() {
     }
   });
 
-  const cseCourse = createdCourses.find(c => c.code === 'BT-CSE');
+  const cseCourse = createdCourses.find(c => c.code === 'BT');
   const sectionA = await prisma.section.create({
     data: {
       name: 'Section A',
@@ -105,11 +108,20 @@ async function main() {
 
   console.log('Seeding subjects...');
   const subjectsData = [
-    { name: 'Data Structures', code: 'CS201', credits: 4 },
-    { name: 'Database Management Systems', code: 'CS301', credits: 4 },
-    { name: 'Operating Systems', code: 'CS401', credits: 4 },
-    { name: 'Computer Networks', code: 'CS501', credits: 3 },
-    { name: 'Artificial Intelligence', code: 'CS601', credits: 4 }
+    { name: 'Data Structures', code: 'DS101', credits: 4 },
+    { name: 'Database Management Systems', code: 'DBMS101', credits: 4 },
+    { name: 'Operating Systems', code: 'OS101', credits: 4 },
+    { name: 'Computer Networks', code: 'CN101', credits: 3 },
+    { name: 'Java Programming', code: 'JAVA101', credits: 4 },
+    { name: 'Python Programming', code: 'PY101', credits: 4 },
+    { name: 'Artificial Intelligence', code: 'AI101', credits: 4 },
+    { name: 'Machine Learning', code: 'ML101', credits: 4 },
+    { name: 'Web Technologies', code: 'WT101', credits: 3 },
+    { name: 'Software Engineering', code: 'SE101', credits: 3 },
+    { name: 'Cloud Computing', code: 'CC101', credits: 3 },
+    { name: 'Computer Architecture', code: 'CA101', credits: 4 },
+    { name: 'Discrete Mathematics', code: 'DM101', credits: 4 },
+    { name: 'Digital Logic Design', code: 'DLD101', credits: 4 }
   ];
 
   const createdSubjects = [];
