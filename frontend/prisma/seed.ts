@@ -22,6 +22,7 @@ async function main() {
   await prisma.attendanceRecord.deleteMany();
   await prisma.attendance.deleteMany();
   await prisma.timetable.deleteMany();
+  await prisma.facultyWorkload.deleteMany();
   await prisma.section.deleteMany();
   await prisma.subject.deleteMany();
   await prisma.semester.deleteMany();
@@ -200,9 +201,21 @@ async function main() {
   }
 
   for (let i = 0; i < createdSubjects.length; i++) {
+    const assignedFacultyId = createdFacultyIds[i % createdFacultyIds.length]
     await prisma.subject.update({
       where: { id: createdSubjects[i].id },
-      data: { facultyId: createdFacultyIds[i % createdFacultyIds.length] }
+      data: { facultyId: assignedFacultyId }
+    });
+
+    await prisma.facultyWorkload.create({
+      data: {
+        facultyId: assignedFacultyId,
+        departmentId: createdDepts[0].id,
+        courseId: cseCourse!.id,
+        semesterId: semester.id,
+        sectionId: sectionA.id,
+        subjectId: createdSubjects[i].id
+      }
     });
   }
 
@@ -307,7 +320,10 @@ async function main() {
         dueDate: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000),
         subjectId: subject.id,
         maxMarks: 100,
-        attachments: ['https://example.com/assignment-question.pdf']
+        attachments: ['https://example.com/assignment-question.pdf'],
+        sections: {
+          connect: [{ id: sectionA.id }]
+        }
       }
     });
 

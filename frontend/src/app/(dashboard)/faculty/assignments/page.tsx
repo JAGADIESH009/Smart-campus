@@ -5,14 +5,14 @@ import { useAuth } from "@/lib/auth/AuthContext"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { FileText, CheckCircle2, Plus, X, Search, Edit2, Trash2, UploadCloud } from "lucide-react"
-import CreatableSelect from 'react-select/creatable'
+import { FileText, CheckCircle2, Plus, X, Search, Edit2, Trash2, UploadCloud, AlertCircle } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
 
 export default function FacultyAssignmentsPage() {
   const { user } = useAuth()
   const [assignments, setAssignments] = useState<any[]>([])
+  const [workloads, setWorkloads] = useState<any[]>([])
   const [subjects, setSubjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [facultyId, setFacultyId] = useState<string | null>(null)
@@ -34,6 +34,7 @@ export default function FacultyAssignmentsPage() {
     subjectId: "",
     maxMarks: 100
   })
+  const [selectedSectionIds, setSelectedSectionIds] = useState<string[]>([])
   const [files, setFiles] = useState<File[]>([])
   const [existingAttachments, setExistingAttachments] = useState<string[]>([])
 
@@ -43,71 +44,73 @@ export default function FacultyAssignmentsPage() {
     if (!user) return
     try {
       setLoading(true)
-      const { data: facultyData } = await supabase.from('Faculty').select('id, subjects:Subject(id, name, code)').eq('userId', user.id).single()
-      if (facultyData) setFacultyId(facultyData.id)
-      
-      // Fetch ALL subjects to allow selecting any subject
-      const { data: allSubjects } = await supabase.from('Subject').select('id, name, code').order('name')
-      setSubjects(allSubjects || [])
-
-      const subs = facultyData?.subjects || []
-      const subjectIds = subs.map((s: any) => s.id)
-      
-      // Also include assignments they created even if subject isn't directly mapped to them in some cases
-      // But let's just fetch all assignments created by this faculty or for these subjects
-      // If we fetch all, maybe it's better to fetch by facultyId if Assignment had it. Since Assignment only has subjectId,
-      // We will fetch assignments where the subject is one of the faculty's mapped subjects, OR if they created it.
-      // Since Assignment doesn't have facultyId, we'll stick to subjectIds but also add a way to see their newly created subjects.
-      
-      if (subjectIds.length === 0) {
-        // If they have no mapped subjects, fetch assignments for subjects they might have created?
-        // Since we don't track creator on Subject, we can just fetch all assignments for now if it's a demo, or keep it empty.
-        // The prompt says "Make it available... Immediately assign it to the assignment."
-      }
-
-      let query = supabase.from('Assignment')
-        .select(`
-          id, title, description, dueDate, maxMarks, attachments,
-          subject:Subject(id, name),
-          submissions:AssignmentSubmission(
-            id, status, submittedAt, marks, remarks, fileUrl, attachments, studentId, assignmentId,
-            student:Student(
-              rollNumber,
-              user:User(
-                profile:UserProfile(firstName, lastName)
+      const { data: facultyData } = await supabase.from('Faculty').select('id').eq('userId', user.id).single()
+      if (facultyData) {
+        setFacultyId(facultyData.id)
+        
+        // Fetch Admin-assigned Workloads
+        const { data: workloadData } = await supabase
+          .from('FacultyWorkload')
+          .select(`
+            id, 
+            subjectId, subject:Subject(id, name, code),
+            sectionId, section:Section(id, name)
+          `)
+          .eq('facultyId', facultyData.id)
+          
+        setWorkloads(workloadData || [])
+        
+        // Extract unique subjects
+        const uniqueSubjects = Array.from(new Map((workloadData || []).map((w: any) => [w.subjectId, w.subject])).values())
+        setSubjects(uniqueSubjects)
+        
+        const subjectIds = uniqueSubjects.map((s: any) => s.id)
+        
+        if (subjectIds.length > 0) {
+          const query = supabase.from('Assignment')
+            .select(`
+              id, title, description, dueDate, maxMarks, attachments,
+              subject:Subject(id, name),
+              sections:Assignment_sections(section:Section(id, name)),
+              submissions:AssignmentSubmission(
+                id, status, submittedAt, marks, remarks, fileUrl, attachments, studentId, assignmentId,
+                student:Student(
+                  rollNumber,
+                  user:User(
+                    profile:UserProfile(firstName, lastName)
+                  )
+                )
               )
-            )
-          )
-        `)
-        .order('createdAt', { ascending: false })
-      
-      if (subjectIds.length > 0) {
-        query = query.in('subjectId', subjectIds)
-      } else {
-        // Just fetch all for this demo if they have no assigned subjects so it's not totally empty if they created one
-      }
-
-      const { data } = await query
-      
-      if (data) {
-        const mapped = data.map((a: any) => ({
-          ...a,
-          subject: Array.isArray(a.subject) ? a.subject[0] : a.subject,
-          submissions: a.submissions.map((sub: any) => {
-            const s = sub.student || {}
-            const userObj = Array.isArray(s.user) ? s.user[0] : s.user
-            const profile = userObj?.profile ? (Array.isArray(userObj.profile) ? userObj.profile[0] : userObj.profile) : null
-            return {
-              ...sub,
-              student: {
-                rollNumber: s.rollNumber,
-                firstName: profile?.firstName || 'Unknown',
-                lastName: profile?.lastName || ''
-              }
-            }
-          })
-        }))
-        setAssignments(mapped)
+            `)
+            .in('subjectId', subjectIds)
+            .order('createdAt', { ascending: false })
+            
+          const { data } = await query
+          
+          if (data) {
+            const mapped = data.map((a: any) => ({
+              ...a,
+              subject: Array.isArray(a.subject) ? a.subject[0] : a.subject,
+              sections: a.sections ? a.sections.map((secWrap:any) => secWrap.section) : [],
+              submissions: a.submissions.map((sub: any) => {
+                const s = sub.student || {}
+                const userObj = Array.isArray(s.user) ? s.user[0] : s.user
+                const profile = userObj?.profile ? (Array.isArray(userObj.profile) ? userObj.profile[0] : userObj.profile) : null
+                return {
+                  ...sub,
+                  student: {
+                    rollNumber: s.rollNumber,
+                    firstName: profile?.firstName || 'Unknown',
+                    lastName: profile?.lastName || ''
+                  }
+                }
+              })
+            }))
+            setAssignments(mapped)
+          }
+        } else {
+          setAssignments([])
+        }
       }
     } catch (err) {
       console.error(err)
@@ -153,6 +156,7 @@ export default function FacultyAssignmentsPage() {
       subjectId: "",
       maxMarks: 100
     })
+    setSelectedSectionIds([])
     setFiles([])
     setExistingAttachments([])
     setIsModalOpen(true)
@@ -169,6 +173,7 @@ export default function FacultyAssignmentsPage() {
       subjectId: assignment.subject?.id,
       maxMarks: assignment.maxMarks || 100
     })
+    setSelectedSectionIds(assignment.sections ? assignment.sections.map((s:any)=>s.id) : [])
     setFiles([])
     setExistingAttachments(assignment.attachments || [])
     setIsModalOpen(true)
@@ -178,6 +183,7 @@ export default function FacultyAssignmentsPage() {
     if (!confirm("Are you sure you want to delete this assignment?")) return
     try {
       await supabase.from('Assignment').delete().eq('id', id)
+      // Delete relationships too (handled by cascade if set, otherwise need to clean up manually)
       await fetchAssignments()
     } catch (e) {
       console.error(e)
@@ -188,6 +194,18 @@ export default function FacultyAssignmentsPage() {
     e.preventDefault()
     setIsSubmitting(true)
     try {
+      if (!formData.subjectId) {
+        alert("Please select a subject")
+        setIsSubmitting(false)
+        return
+      }
+
+      if (selectedSectionIds.length === 0) {
+        alert("Please select at least one section")
+        setIsSubmitting(false)
+        return
+      }
+
       // 1. Upload new files if any
       const newAttachmentUrls: string[] = []
       if (files.length > 0) {
@@ -205,30 +223,36 @@ export default function FacultyAssignmentsPage() {
       }
 
       const allAttachments = [...existingAttachments, ...newAttachmentUrls]
-      
       const combinedDateTime = new Date(`${formData.dueDate}T${formData.dueTime}:00`)
-
-      const finalSubjectId = formData.subjectId
-
-      if (!finalSubjectId) {
-        alert("Please select or create a subject")
-        setIsSubmitting(false)
-        return
-      }
 
       const assignmentPayload = {
         title: formData.title,
         description: formData.description,
         dueDate: combinedDateTime.toISOString(),
-        subjectId: finalSubjectId,
+        subjectId: formData.subjectId,
         maxMarks: formData.maxMarks,
         attachments: allAttachments
       }
 
       if (editingId) {
         await supabase.from('Assignment').update(assignmentPayload).eq('id', editingId)
+        
+        // Update Sections (simplest way: delete all and reinsert, since it's an implicit many-to-many we have to update the join table)
+        // Note: For Supabase implicit M:N created by Prisma, the table is usually _AssignmentToSection
+        // It's easier to use a Server Action if Prisma is needed, but we can call our own API or try direct insert.
+        // Actually, Supabase schema has `_AssignmentToSection` with `A` (Assignment) and `B` (Section).
+        await supabase.from('_AssignmentToSection').delete().eq('A', editingId)
+        if (selectedSectionIds.length > 0) {
+          await supabase.from('_AssignmentToSection').insert(selectedSectionIds.map(secId => ({ A: editingId, B: secId })))
+        }
       } else {
-        await supabase.from('Assignment').insert([assignmentPayload])
+        const { data: newAssignment, error } = await supabase.from('Assignment').insert([assignmentPayload]).select().single()
+        if (error) throw error
+        
+        // Insert into join table
+        if (selectedSectionIds.length > 0) {
+          await supabase.from('_AssignmentToSection').insert(selectedSectionIds.map(secId => ({ A: newAssignment.id, B: secId })))
+        }
       }
 
       setIsModalOpen(false)
@@ -242,6 +266,8 @@ export default function FacultyAssignmentsPage() {
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading assignments...</div>
 
+  const allowedSectionsForSubject = formData.subjectId ? workloads.filter(w => w.subjectId === formData.subjectId).map(w => w.section) : []
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700 max-w-7xl mx-auto pb-12">
       <div className="flex justify-between items-center">
@@ -249,134 +275,155 @@ export default function FacultyAssignmentsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Assignment Management</h1>
           <p className="text-muted-foreground mt-1">Create assignments, attach files, and grade submissions.</p>
         </div>
-        <Button onClick={openCreateModal} className="bg-primary text-primary-foreground shadow-lg">
-          <Plus size={16} className="mr-2"/> Create Assignment
-        </Button>
-      </div>
-
-      <div className="space-y-6">
-        {assignments.map(assignment => (
-          <Card key={assignment.id} className="glass bg-card/60">
-            <CardHeader className="pb-4 border-b border-white/5">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="text-sm font-bold text-primary uppercase tracking-wider mb-1">{assignment.subject?.name}</div>
-                  <CardTitle className="text-xl mb-1">{assignment.title}</CardTitle>
-                  <CardDescription>
-                    Due: {new Date(assignment.dueDate).toLocaleString()} | Max Marks: {assignment.maxMarks}
-                  </CardDescription>
-                  {assignment.attachments && assignment.attachments.length > 0 && (
-                    <div className="flex gap-2 mt-2">
-                      {assignment.attachments.map((url: string, idx: number) => (
-                        <a key={idx} href={url} target="_blank" rel="noreferrer" className="text-xs flex items-center gap-1 bg-white/5 px-2 py-1 rounded hover:bg-white/10 transition-colors">
-                          <FileText size={12} /> Attachment {idx + 1}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex gap-2 items-start">
-                  <Button variant="ghost" size="icon" onClick={() => openEditModal(assignment)}>
-                    <Edit2 size={16} className="text-muted-foreground" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(assignment.id)}>
-                    <Trash2 size={16} className="text-destructive/80 hover:text-destructive" />
-                  </Button>
-                  <div className="text-right ml-4">
-                    <div className="text-2xl font-black text-foreground">{assignment.submissions.length}</div>
-                    <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Submissions</div>
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-4">
-              {assignment.submissions.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-muted/50 text-muted-foreground">
-                      <tr>
-                        <th className="px-6 py-4 font-medium">Student</th>
-                        <th className="px-6 py-4 font-medium">Status</th>
-                        <th className="px-6 py-4 font-medium">Submitted At</th>
-                        <th className="px-6 py-4 font-medium text-center">Score</th>
-                        <th className="px-6 py-4 font-medium text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/50">
-                      {assignment.submissions.map((sub: any) => (
-                        <tr key={sub.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-6 py-4 font-medium">
-                            {sub.student.firstName} {sub.student.lastName}
-                            <div className="text-xs text-muted-foreground font-normal">{sub.student.rollNumber}</div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border uppercase tracking-wider ${sub.status === 'GRADED' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
-                              {sub.status === 'GRADED' ? <><CheckCircle2 size={12}/> Graded</> : 'Awaiting Grade'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-muted-foreground">{new Date(sub.submittedAt).toLocaleString()}</td>
-                          <td className="px-6 py-4 text-center font-bold text-lg">
-                            {sub.marks !== null ? <span className="text-green-500">{sub.marks}</span> : '-'}
-                            <span className="text-xs text-muted-foreground font-normal ml-1">/ {assignment.maxMarks}</span>
-                          </td>
-                          <td className="px-6 py-4 text-right space-x-2">
-                            {sub.attachments && sub.attachments.length > 0 ? (
-                              <a href={sub.attachments[0]} target="_blank" rel="noreferrer">
-                                <Button variant="outline" size="sm" className="h-8 border-white/10">
-                                  <FileText size={14} className="mr-2"/> View File
-                                </Button>
-                              </a>
-                            ) : sub.fileUrl ? (
-                              <a href={sub.fileUrl} target="_blank" rel="noreferrer">
-                                <Button variant="outline" size="sm" className="h-8 border-white/10">
-                                  <FileText size={14} className="mr-2"/> View File
-                                </Button>
-                              </a>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">No File</span>
-                            )}
-                            <Button 
-                              variant={sub.status === 'GRADED' ? 'ghost' : 'default'} 
-                              size="sm" 
-                              className={`h-8 ${sub.status !== 'GRADED' ? 'bg-primary text-primary-foreground shadow-md' : ''}`}
-                              onClick={() => {
-                                setGradingSub({ ...sub, maxMarks: assignment.maxMarks })
-                                setMarks(sub.marks ? sub.marks.toString() : "")
-                                setRemarks(sub.remarks || "")
-                              }}
-                            >
-                              {sub.status === 'GRADED' ? 'Edit Grade' : 'Grade'}
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-center text-sm text-muted-foreground py-12 flex flex-col items-center">
-                  <Search size={32} className="opacity-20 mb-3" />
-                  No submissions yet.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-        {assignments.length === 0 && (
-          <div className="p-12 text-center text-muted-foreground border border-dashed rounded-3xl glass border-white/10">
-            No assignments found. Click "Create Assignment" to add one.
-          </div>
+        {workloads.length > 0 && (
+          <Button onClick={openCreateModal} className="bg-primary text-primary-foreground shadow-lg">
+            <Plus size={16} className="mr-2"/> Create Assignment
+          </Button>
         )}
       </div>
+
+      {workloads.length === 0 ? (
+        <Card className="glass border-orange-500/30 bg-orange-500/5">
+          <CardContent className="flex flex-col items-center text-center p-12">
+            <AlertCircle size={48} className="text-orange-500 mb-4 opacity-80" />
+            <h2 className="text-xl font-bold text-foreground mb-2">No Workloads Assigned</h2>
+            <p className="text-muted-foreground max-w-md">
+              No subjects or class sections have been assigned to you yet. Please contact an administrator to update your academic workload.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          {assignments.map(assignment => (
+            <Card key={assignment.id} className="glass bg-card/60">
+              <CardHeader className="pb-4 border-b border-white/5">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="text-sm font-bold text-primary uppercase tracking-wider mb-1">
+                      {assignment.subject?.name} 
+                      {assignment.sections && assignment.sections.length > 0 && (
+                        <span className="text-muted-foreground ml-2 text-xs">
+                          ({assignment.sections.map((s:any)=>s.name).join(', ')})
+                        </span>
+                      )}
+                    </div>
+                    <CardTitle className="text-xl mb-1">{assignment.title}</CardTitle>
+                    <CardDescription>
+                      Due: {new Date(assignment.dueDate).toLocaleString()} | Max Marks: {assignment.maxMarks}
+                    </CardDescription>
+                    {assignment.attachments && assignment.attachments.length > 0 && (
+                      <div className="flex gap-2 mt-2">
+                        {assignment.attachments.map((url: string, idx: number) => (
+                          <a key={idx} href={url} target="_blank" rel="noreferrer" className="text-xs flex items-center gap-1 bg-white/5 px-2 py-1 rounded hover:bg-white/10 transition-colors">
+                            <FileText size={12} /> Attachment {idx + 1}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 items-start">
+                    <Button variant="ghost" size="icon" onClick={() => openEditModal(assignment)}>
+                      <Edit2 size={16} className="text-muted-foreground" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(assignment.id)}>
+                      <Trash2 size={16} className="text-destructive/80 hover:text-destructive" />
+                    </Button>
+                    <div className="text-right ml-4">
+                      <div className="text-2xl font-black text-foreground">{assignment.submissions.length}</div>
+                      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Submissions</div>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4">
+                {assignment.submissions.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-muted/50 text-muted-foreground">
+                        <tr>
+                          <th className="px-6 py-4 font-medium">Student</th>
+                          <th className="px-6 py-4 font-medium">Status</th>
+                          <th className="px-6 py-4 font-medium">Submitted At</th>
+                          <th className="px-6 py-4 font-medium text-center">Score</th>
+                          <th className="px-6 py-4 font-medium text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {assignment.submissions.map((sub: any) => (
+                          <tr key={sub.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-6 py-4 font-medium">
+                              {sub.student.firstName} {sub.student.lastName}
+                              <div className="text-xs text-muted-foreground font-normal">{sub.student.rollNumber}</div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border uppercase tracking-wider ${sub.status === 'GRADED' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
+                                {sub.status === 'GRADED' ? <><CheckCircle2 size={12}/> Graded</> : 'Awaiting Grade'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-muted-foreground">{new Date(sub.submittedAt).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-center font-bold text-lg">
+                              {sub.marks !== null ? <span className="text-green-500">{sub.marks}</span> : '-'}
+                              <span className="text-xs text-muted-foreground font-normal ml-1">/ {assignment.maxMarks}</span>
+                            </td>
+                            <td className="px-6 py-4 text-right space-x-2">
+                              {sub.attachments && sub.attachments.length > 0 ? (
+                                <a href={sub.attachments[0]} target="_blank" rel="noreferrer">
+                                  <Button variant="outline" size="sm" className="h-8 border-white/10">
+                                    <FileText size={14} className="mr-2"/> View File
+                                  </Button>
+                                </a>
+                              ) : sub.fileUrl ? (
+                                <a href={sub.fileUrl} target="_blank" rel="noreferrer">
+                                  <Button variant="outline" size="sm" className="h-8 border-white/10">
+                                    <FileText size={14} className="mr-2"/> View File
+                                  </Button>
+                                </a>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">No File</span>
+                              )}
+                              <Button 
+                                variant={sub.status === 'GRADED' ? 'ghost' : 'default'} 
+                                size="sm" 
+                                className={`h-8 ${sub.status !== 'GRADED' ? 'bg-primary text-primary-foreground shadow-md' : ''}`}
+                                onClick={() => {
+                                  setGradingSub({ ...sub, maxMarks: assignment.maxMarks })
+                                  setMarks(sub.marks ? sub.marks.toString() : "")
+                                  setRemarks(sub.remarks || "")
+                                }}
+                              >
+                                {sub.status === 'GRADED' ? 'Edit Grade' : 'Grade'}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center text-sm text-muted-foreground py-12 flex flex-col items-center">
+                    <Search size={32} className="opacity-20 mb-3" />
+                    No submissions yet.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+          {assignments.length === 0 && (
+            <div className="p-12 text-center text-muted-foreground border border-dashed rounded-3xl glass border-white/10">
+              No assignments found. Click "Create Assignment" to add one.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Create / Edit Modal Overlay */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-          <Card className="glass w-full max-w-2xl bg-card shadow-2xl border-white/10">
-            <CardHeader className="border-b border-white/5 flex flex-row items-center justify-between">
+          <Card className="glass w-full max-w-2xl bg-card shadow-2xl border-white/10 max-h-[90vh] overflow-y-auto">
+            <CardHeader className="border-b border-white/5 flex flex-row items-center justify-between sticky top-0 bg-card z-10">
               <div>
                 <CardTitle className="text-xl">{editingId ? 'Edit Assignment' : 'Create Assignment'}</CardTitle>
-                <CardDescription>Fill out the details below.</CardDescription>
+                <CardDescription>Assign work strictly to your designated subjects and classes.</CardDescription>
               </div>
               <Button variant="ghost" size="icon" onClick={() => setIsModalOpen(false)} className="rounded-full">
                 <X size={20} />
@@ -400,71 +447,57 @@ export default function FacultyAssignmentsPage() {
                     />
                   </div>
 
-                  <div className="space-y-1.5 md:col-span-2">
+                  <div className="space-y-1.5">
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subject *</label>
-                    <CreatableSelect 
-                      isClearable
-                      options={subjects.map(s => ({ value: s.id, label: `${s.name} ${s.code ? `(${s.code})` : ''}` }))}
-                      value={formData.subjectId ? { value: formData.subjectId, label: subjects.find(s => s.id === formData.subjectId)?.name || 'Selected Subject' } : null}
-                      onChange={(newValue: any) => {
-                        setFormData({...formData, subjectId: newValue ? newValue.value : ""})
+                    <select 
+                      required
+                      value={formData.subjectId}
+                      onChange={e => {
+                        setFormData({...formData, subjectId: e.target.value})
+                        setSelectedSectionIds([]) // Reset sections when subject changes
                       }}
-                      onCreateOption={async (inputValue) => {
-                        try {
-                          // Check for case-insensitive duplicate
-                          const existing = subjects.find(s => s.name.toLowerCase() === inputValue.toLowerCase())
-                          if (existing) {
-                            setFormData({...formData, subjectId: existing.id})
-                            return
-                          }
-
-                          const code = inputValue.substring(0, 3).toUpperCase() + Math.floor(Math.random() * 1000)
-                          // Insert the new subject into Supabase
-                          const { data, error } = await supabase.from('Subject').insert([{
-                            name: inputValue,
-                            code: code,
-                            facultyId: facultyId
-                          }]).select().single()
-                          
-                          if (error) throw error
-                          
-                          setSubjects([...subjects, data])
-                          setFormData({...formData, subjectId: data.id})
-                        } catch (e) {
-                          console.error(e)
-                          alert("Failed to create subject")
-                        }
-                      }}
-                      styles={{
-                        control: (base) => ({
-                          ...base,
-                          backgroundColor: 'rgba(0,0,0,0.2)',
-                          borderColor: 'rgba(255,255,255,0.1)',
-                          color: 'white'
-                        }),
-                        menu: (base) => ({
-                          ...base,
-                          backgroundColor: '#1a1a1a',
-                          zIndex: 9999
-                        }),
-                        option: (base, { isFocused }) => ({
-                          ...base,
-                          backgroundColor: isFocused ? 'rgba(255,255,255,0.1)' : 'transparent',
-                          color: 'white'
-                        }),
-                        singleValue: (base) => ({
-                          ...base,
-                          color: 'white'
-                        }),
-                        input: (base) => ({
-                          ...base,
-                          color: 'white'
-                        })
-                      }}
-                    />
+                      className="w-full bg-background/50 border border-white/10 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
+                    >
+                      <option value="">-- Select Subject --</option>
+                      {subjects.map(s => (
+                        <option key={s.id} value={s.id}>{s.name} {s.code ? `(${s.code})` : ''}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Class (Sections) *</label>
+                    {formData.subjectId ? (
+                      <div className="flex flex-col gap-2 bg-background/30 border border-white/5 p-3 rounded-lg max-h-32 overflow-y-auto">
+                        {allowedSectionsForSubject.map((sec: any) => (
+                          <label key={sec.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-white/5 p-1 rounded">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedSectionIds.includes(sec.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedSectionIds([...selectedSectionIds, sec.id])
+                                } else {
+                                  setSelectedSectionIds(selectedSectionIds.filter(id => id !== sec.id))
+                                }
+                              }}
+                              className="accent-primary rounded"
+                            />
+                            {sec.name}
+                          </label>
+                        ))}
+                        {allowedSectionsForSubject.length === 0 && (
+                          <span className="text-xs text-muted-foreground">No sections assigned for this subject.</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground p-3 border border-dashed border-white/10 rounded-lg text-center">
+                        Select a subject first
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-2">
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Max Marks *</label>
                     <Input required type="number" min="0" value={formData.maxMarks} onChange={e => setFormData({...formData, maxMarks: parseInt(e.target.value) || 0})} />
                   </div>
@@ -507,7 +540,7 @@ export default function FacultyAssignmentsPage() {
 
               </form>
             </CardContent>
-            <div className="p-4 bg-card/80 border-t border-white/5 flex justify-end gap-3 rounded-b-xl">
+            <div className="p-4 bg-card/80 border-t border-white/5 flex justify-end gap-3 rounded-b-xl sticky bottom-0 z-10">
               <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
               <Button type="submit" form="assignment-form" disabled={isSubmitting} className="bg-primary text-primary-foreground">
                 {isSubmitting ? 'Saving...' : 'Save Assignment'}

@@ -33,25 +33,43 @@ export default function FacultyAttendancePage() {
 
     const fetchHierarchy = async () => {
       try {
-        const { data: facultyData } = await supabase.from('Faculty').select(`
-          subjects:Subject(
-            id, name,
-            course:Course(
-              sections:Section(id, name)
-            )
-          )
-        `).eq('userId', user.id).single()
+        const { data: facultyData } = await supabase.from('Faculty').select('id').eq('userId', user.id).single()
 
-        if (facultyData?.subjects) {
-          const formatted = facultyData.subjects.map((s: any) => {
-            const course = Array.isArray(s.course) ? s.course[0] : s.course
-            return {
-              id: s.id,
-              name: s.name,
-              sections: course?.sections || []
-            }
-          })
-          setHierarchy(formatted)
+        if (facultyData) {
+          const { data: workloadData } = await supabase
+            .from('FacultyWorkload')
+            .select(`
+              subjectId, subject:Subject(id, name),
+              sectionId, section:Section(id, name)
+            `)
+            .eq('facultyId', facultyData.id)
+
+          if (workloadData) {
+            // Group sections by subject
+            const subjectMap = new Map<string, any>()
+            
+            workloadData.forEach((w: any) => {
+              const sub = Array.isArray(w.subject) ? w.subject[0] : w.subject
+              const sec = Array.isArray(w.section) ? w.section[0] : w.section
+              
+              if (!sub || !sec) return
+              
+              if (!subjectMap.has(sub.id)) {
+                subjectMap.set(sub.id, {
+                  id: sub.id,
+                  name: sub.name,
+                  sections: []
+                })
+              }
+              const group = subjectMap.get(sub.id)
+              // prevent duplicate sections in the list
+              if (!group.sections.some((s:any) => s.id === sec.id)) {
+                group.sections.push(sec)
+              }
+            })
+
+            setHierarchy(Array.from(subjectMap.values()))
+          }
         }
       } catch (err) {
         console.error(err)

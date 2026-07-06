@@ -109,6 +109,7 @@ model Faculty {
   department    Department @relation(fields: [departmentId], references: [id])
   
   subjects      Subject[]
+  workloads     FacultyWorkload[]
   leaveRequests LeaveRequest[]
   timetables    Timetable[]
   
@@ -144,6 +145,7 @@ model Department {
   students    Student[]
   faculty     Faculty[]
   alumni      Alumni[]
+  workloads   FacultyWorkload[]
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -159,6 +161,7 @@ model Course {
   subjects     Subject[]
   sections     Section[]
   students     Student[]
+  workloads    FacultyWorkload[]
   
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -174,6 +177,7 @@ model Semester {
   students  Student[]
   fees      Fee[]
   exams     Exam[]
+  workloads FacultyWorkload[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -196,6 +200,7 @@ model Subject {
   exams       Exam[]
   marks       Mark[]
   timetables  Timetable[]
+  workloads   FacultyWorkload[]
   
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -209,6 +214,8 @@ model Section {
   
   students  Student[]
   timetables Timetable[]
+  workloads FacultyWorkload[]
+  assignments Assignment[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -263,6 +270,7 @@ model Assignment {
   subjectId   String
   subject     Subject  @relation(fields: [subjectId], references: [id])
   
+  sections    Section[]
   submissions AssignmentSubmission[]
   
   createdAt   DateTime @default(now())
@@ -343,6 +351,27 @@ model Timetable {
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model FacultyWorkload {
+  id           String   @id @default(uuid())
+  facultyId    String
+  faculty      Faculty  @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  courseId     String
+  course       Course   @relation(fields: [courseId], references: [id])
+  semesterId   String?
+  semester     Semester? @relation(fields: [semesterId], references: [id])
+  sectionId    String
+  section      Section  @relation(fields: [sectionId], references: [id])
+  subjectId    String
+  subject      Subject  @relation(fields: [subjectId], references: [id])
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@unique([facultyId, sectionId, subjectId])
 }
 
 model Fee {

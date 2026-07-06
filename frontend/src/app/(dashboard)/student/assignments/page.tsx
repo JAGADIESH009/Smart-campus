@@ -28,25 +28,24 @@ export default function StudentAssignmentsPage() {
     if (!user) return
     
     try {
-      const { data: studentData } = await supabase.from('Student').select('id, courseId, semesterId').eq('userId', user.id).single()
+      const { data: studentData } = await supabase.from('Student').select('id, courseId, semesterId, sectionId').eq('userId', user.id).single()
       const studentId = studentData?.id
 
-      if (studentId) {
-        // Find subjects for the student's semester/course
-        const { data: subjects } = await supabase.from('Subject').select('id').eq('courseId', studentData.courseId)
-        const subjectIds = subjects?.map(s => s.id) || []
+      if (studentId && studentData.sectionId) {
+        // Fetch Assignment IDs assigned to this student's section
+        const { data: sectionAssignments } = await supabase.from('_AssignmentToSection').select('A').eq('B', studentData.sectionId)
+        const assignmentIds = sectionAssignments?.map((sa: any) => sa.A) || []
 
-        if (subjectIds.length > 0) {
-          // Fetch assignments for those subjects
+        if (assignmentIds.length > 0) {
+          // Fetch those assignments
           const { data: assignmentsData } = await supabase
             .from('Assignment')
             .select('*, Subject(name)')
-            .in('subjectId', subjectIds)
+            .in('id', assignmentIds)
             .order('dueDate', { ascending: true })
 
           if (assignmentsData) {
             // Fetch submissions for this student
-            const assignmentIds = assignmentsData.map(a => a.id)
             const { data: submissionsData } = await supabase
               .from('AssignmentSubmission')
               .select('*')
@@ -64,6 +63,8 @@ export default function StudentAssignmentsPage() {
 
             setAssignments(merged)
           }
+        } else {
+          setAssignments([])
         }
       }
     } catch (err) {
