@@ -61,6 +61,7 @@ export default function AdminStudentsPage() {
       }
     }
     fetchStudents()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading students...</div>

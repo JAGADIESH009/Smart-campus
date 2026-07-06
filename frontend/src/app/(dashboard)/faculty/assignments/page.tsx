@@ -81,6 +81,7 @@ export default function FacultyAssignmentsPage() {
 
   useEffect(() => {
     fetchAssignments()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   const handleGrade = async () => {

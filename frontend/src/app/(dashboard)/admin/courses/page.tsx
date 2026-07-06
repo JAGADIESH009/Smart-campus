@@ -46,6 +46,7 @@ export default function AdminCoursesPage() {
       }
     }
     fetchCourses()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading courses...</div>

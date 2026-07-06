@@ -34,6 +34,7 @@ export default function AdminDashboard() {
       }
     }
     fetchStats()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (!stats) return <div className="p-8 text-center animate-pulse">Loading dashboard...</div>

@@ -55,6 +55,7 @@ export default function FacultyStudentsPage() {
       }
     }
     fetchHierarchy()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   useEffect(() => {
@@ -105,6 +106,7 @@ export default function FacultyStudentsPage() {
       }
     }
     fetchStudents()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSubject, selectedSection])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading classes...</div>

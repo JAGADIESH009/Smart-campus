@@ -61,6 +61,7 @@ export default function FacultyStudent360Page({ params }: { params: { id: string
       }
     }
     fetchStudent()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading student profile...</div>

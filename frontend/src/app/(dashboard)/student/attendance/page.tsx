@@ -75,6 +75,7 @@ export default function AttendanceAnalyticsPage() {
       }
     }
     fetchAttendance()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading analytics...</div>

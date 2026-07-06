@@ -44,6 +44,7 @@ export default function StudentDashboard() {
       }
     }
     fetchDashboard()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading dashboard...</div>

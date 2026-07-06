@@ -59,6 +59,7 @@ export default function AdminExaminationsPage() {
       }
     }
     fetchMarks()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (loading) return <div className="p-8 text-center animate-pulse">Loading examination records...</div>

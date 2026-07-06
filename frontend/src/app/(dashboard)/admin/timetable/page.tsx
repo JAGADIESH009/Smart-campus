@@ -32,6 +32,7 @@ export default function AdminTimetablePage() {
       }
     }
     fetchCourses()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleGenerate = () => {

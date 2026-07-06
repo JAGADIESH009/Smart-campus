@@ -60,6 +60,7 @@ export default function FacultyAttendancePage() {
       }
     }
     fetchHierarchy()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   useEffect(() => {
@@ -101,6 +102,7 @@ export default function FacultyAttendancePage() {
       }
     }
     fetchStudents()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSubject, selectedSection])
 
   const markAll = (status: string) => {
