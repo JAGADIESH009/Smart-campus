@@ -27,6 +27,7 @@ export function Sidebar({ role }: { role: string }) {
   } else if (role === 'ADMIN') {
     links = [
       { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/admin/users", label: "User Management", icon: Users },
       { href: "/admin/students", label: "Students", icon: Users },
       { href: "/admin/faculty", label: "Faculty", icon: GraduationCap },
       { href: "/admin/courses", label: "Courses & Sections", icon: BookOpen },
