@@ -30,6 +30,7 @@ export function Sidebar({ role }: { role: string }) {
       { href: "/admin/users", label: "User Management", icon: Users },
       { href: "/admin/students", label: "Students", icon: Users },
       { href: "/admin/faculty", label: "Faculty", icon: GraduationCap },
+      { href: "/admin/departments", label: "Departments", icon: BookOpen },
       { href: "/admin/courses", label: "Courses & Sections", icon: BookOpen },
       { href: "/admin/timetable", label: "Timetable Master", icon: Calendar },
       { href: "/admin/examinations", label: "Examinations", icon: CheckSquare },

@@ -7,19 +7,66 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { createUserAction } from "@/app/actions/user-actions"
 import { useToast } from "@/hooks/use-toast"
+import { SearchableCombobox } from "@/components/ui/searchable-combobox"
 
 export function CreateUserForm({ onSuccess, departments, courses }: { onSuccess: () => void, departments: any[], courses: any[] }) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [role, setRole] = useState("STUDENT")
+  
+  const [departmentId, setDepartmentId] = useState<string>("")
+  const [courseId, setCourseId] = useState<string>("")
+
+  const departmentOptions = departments.map(d => ({ value: d.id, label: d.name }))
+  // Filter courses by selected department
+  const filteredCourses = courses.filter(c => c.departmentId === departmentId)
+  const courseOptions = filteredCourses.map(c => ({ value: c.id, label: c.name }))
+
+  const handleCreateDepartment = async (name: string) => {
+    const { createDepartmentAction } = await import("@/app/actions/department-actions")
+    const res = await createDepartmentAction(name)
+    if (res.error) throw new Error(res.error)
+    if (res.department) {
+      departments.push(res.department) // Optimistic local update
+      setDepartmentId(res.department.id)
+      toast({ title: "Created", description: `Department "${name}" created.` })
+    }
+  }
+
+  const handleCreateCourse = async (name: string) => {
+    if (!departmentId) {
+      toast({ title: "Error", description: "Select a department first.", variant: "destructive" })
+      return
+    }
+    const { createCourseAction } = await import("@/app/actions/course-actions")
+    const res = await createCourseAction(name, departmentId)
+    if (res.error) throw new Error(res.error)
+    if (res.course) {
+      courses.push(res.course) // Optimistic local update
+      setCourseId(res.course.id)
+      toast({ title: "Created", description: `Course "${name}" created.` })
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    
+    if (role !== 'ADMIN' && !departmentId) {
+      toast({ title: "Required", description: "Please select a department.", variant: "destructive" })
+      return
+    }
+    if (role === 'STUDENT' && !courseId) {
+      toast({ title: "Required", description: "Please select a course.", variant: "destructive" })
+      return
+    }
+
     setLoading(true)
 
     const formData = new FormData(e.currentTarget)
     const data = Object.fromEntries(formData.entries())
     data.roleName = role
+    if (role !== 'ADMIN') data.departmentId = departmentId
+    if (role === 'STUDENT') data.courseId = courseId
 
     const result = await createUserAction(data)
     
@@ -75,16 +122,16 @@ export function CreateUserForm({ onSuccess, departments, courses }: { onSuccess:
       {role !== 'ADMIN' && (
         <div className="space-y-2">
           <Label>Department</Label>
-          <Select name="departmentId" required>
-            <SelectTrigger>
-              <SelectValue placeholder="Select Department" />
-            </SelectTrigger>
-            <SelectContent>
-              {departments.map((d) => (
-                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableCombobox 
+            options={departmentOptions}
+            value={departmentId}
+            onChange={(val) => {
+              setDepartmentId(val)
+              setCourseId("") // Reset course when department changes
+            }}
+            onCreate={handleCreateDepartment}
+            placeholder="Select Department..."
+          />
         </div>
       )}
 
@@ -102,16 +149,14 @@ export function CreateUserForm({ onSuccess, departments, courses }: { onSuccess:
           </div>
           <div className="space-y-2">
             <Label>Course</Label>
-            <Select name="courseId" required>
-              <SelectTrigger>
-                <SelectValue placeholder="Select Course" />
-              </SelectTrigger>
-              <SelectContent>
-                {courses.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableCombobox 
+              options={courseOptions}
+              value={courseId}
+              onChange={setCourseId}
+              onCreate={handleCreateCourse}
+              placeholder="Select Course..."
+              disabled={!departmentId}
+            />
           </div>
         </>
       )}
