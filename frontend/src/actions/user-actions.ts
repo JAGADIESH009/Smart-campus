@@ -49,6 +49,7 @@ export async function createUserAction(data: any) {
       user_metadata: {
         firstName: data.firstName,
         lastName: data.lastName,
+        role: data.roleName,
       }
     })
 
